@@ -1,6 +1,30 @@
-[package]
-name = "tmyts-rust-financial-advisor"
+[workspace]
+resolver = "2"
+members = ["bins/advisor-api", "bins/advisor-evals", "bins/advisor-ingest", "bins/advisor-mcp","crates/advisor-agent","crates/advisor-core", "crates/advisor-embed", "crates/advisor-llm", "crates/advisor-market-data", "crates/advisor-memory", "crates/advisor-news-rag", "crates/advisor-observability", "crates/advisor-portfolio", "crates/advisor-tools", "crates/advisor-warden"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+rust-version = "1.99"
 
-[dependencies]
+[workspace.dependencies]
+# internal crates
+advisor-core = { path = "crates/advisor-core" }
+advisor-llm = { path = "crates/advisor-llm" }
+advisor-market-data = { path = "crates/advisor-market-data" }
+advisor-embed = { path = "crates/advisor-embed" }
+advisor-news-rag = { path = "crates/advisor-news-rag" }
+advisor-portfolio = { path = "crates/advisor-portfolio" }
+advisor-warden = { path = "crates/advisor-warden" }
+advisor-memory = { path = "crates/advisor-memory" }
+advisor-tools = { path = "crates/advisor-tools" }
+advisor-agent = { path = "crates/advisor-agent" }
+advisor-observability = { path = "crates/advisor-observability" }
+
+# external (add version numbers as you introduce each one)
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
