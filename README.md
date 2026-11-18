@@ -1,0 +1,1 @@
+AI portfolio research assistant in Rust. Combines RAG over financial news (Qdrant) with price history (Postgres) to explain risk, cite sources and propose portfolio changes for user approval. Built on the Anthropic API with no agent framework, MCP tools, prompt-injection defense, and Prometheus metrics, deployed to K3d.
