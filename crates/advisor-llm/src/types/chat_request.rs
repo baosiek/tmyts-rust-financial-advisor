@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
-    Assistent,
+    Assistant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ impl Message {
 
     pub fn assistent(text: impl Into<String>) -> Self {
         Self {
-            role: Role::Assistent,
+            role: Role::Assistant,
             content: text.into(),
         }
     }

@@ -1,4 +1,4 @@
-use crate::anthropic::wire::{content_block::ContentBlock, wire_usage::WireUsage};
+use super::{ContentBlock, WireUsage};
 use crate::types::{ChatResponse, Usage};
 use serde::Deserialize;
 
