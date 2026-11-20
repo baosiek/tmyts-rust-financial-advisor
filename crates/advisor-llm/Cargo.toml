@@ -6,6 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+advisor-core.workspace = true
 async-trait.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+url.workspace = true

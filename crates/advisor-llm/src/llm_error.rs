@@ -22,7 +22,7 @@ impl LlmError {
     pub fn is_retryable(&self) -> bool {
         match self {
             LlmError::RateLimited { .. } | LlmError::Network(_) => true,
-            LlmError::Api { status, .. } => matches!(status, 408 | 500..=504 | 529),
+            LlmError::Api { status, .. } => matches!(status, 408 | 500 | 502..=504 | 529),
             LlmError::Auth(_) | LlmError::Parse(_) => false,
         }
     }
