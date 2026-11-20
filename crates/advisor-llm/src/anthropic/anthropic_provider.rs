@@ -1,4 +1,3 @@
-use std::time::Duration;
 use url::Url;
 
 use crate::anthropic::anthropic_config::AnthropicConfig;
@@ -24,7 +23,7 @@ pub struct AnthropicProvider {
 impl AnthropicProvider {
     pub fn new(config: AnthropicConfig) -> Result<Self, LlmError> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(config.timeout)
             .build()
             .map_err(|e| LlmError::Network(e.to_string()))?;
 

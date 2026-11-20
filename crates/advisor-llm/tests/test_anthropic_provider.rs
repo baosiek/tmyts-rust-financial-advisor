@@ -13,6 +13,7 @@ fn provider_for(server: &MockServer) -> AnthropicProvider {
         model: "test-model".to_string(),
         version: "2023-06-01".to_string(),
         url: Url::parse(&format!("{}/v1/messages", server.uri())).expect("valid URL"),
+        timeout: std::time::Duration::from_secs(5),
     };
 
     AnthropicProvider::new(config).expect("provider should be build")

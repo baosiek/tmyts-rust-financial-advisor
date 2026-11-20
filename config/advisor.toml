@@ -1,8 +1,16 @@
-[anthropic]
+# Non-secret settings. Secrets (API keys, passwords) stay in environment variables / .env.
+
+[llm]
+# Which provider the agent uses. Switching is a config change: edit this line and restart.
+provider = "anthropic"
+
+[llm.anthropic]
 url = "https://api.anthropic.com/v1/messages"
 version = "2023-06-01"
 model = "claude-sonnet-5-5"
 timeout_secs = 120
+
+# [llm.openai]   <- added once an OpenAiProvider exists
 
 [agent]
 max_tokens = 1024

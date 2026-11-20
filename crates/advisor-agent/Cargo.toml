@@ -6,3 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+advisor-llm.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+tokio.workspace = true

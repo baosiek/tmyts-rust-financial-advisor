@@ -21,7 +21,7 @@ impl Message {
         }
     }
 
-    pub fn assistent(text: impl Into<String>) -> Self {
+    pub fn assistant(text: impl Into<String>) -> Self {
         Self {
             role: Role::Assistant,
             content: text.into(),
