@@ -86,6 +86,6 @@ impl LlmProvider for AnthropicProvider {
             .json()
             .await
             .map_err(|e| LlmError::Parse(e.to_string()))?;
-        Ok(ChatResponse::from(parsed)) // you already import MessageResponse in chat_response.rs
+        Ok(ChatResponse::from(parsed))
     }
 }
