@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use advisor_llm::types::{ChatRequest, ChatResponse, Usage};
+use advisor_llm::types::{ChatRequest, ChatResponse, ContentBlock, StopReason, Usage};
 use advisor_llm::{LlmError, LlmProvider, TimedProvider};
 
 struct SlowProvider {
@@ -27,9 +27,9 @@ impl LlmProvider for SlowProvider {
             return Err(LlmError::Auth("bad key".into()));
         }
         Ok(ChatResponse {
-            text: "done".to_string(),
+            content: vec![ContentBlock::text("done")],
             model: "slow-model".to_string(),
-            stop_reason: None,
+            stop_reason: StopReason::EndTurn,
             usage: Usage::default(),
         })
     }
@@ -47,7 +47,7 @@ fn wrapped(delay_ms: u64, fail: bool, limit_ms: u64) -> TimedProvider {
 async fn fast_call_passes_through() {
     let provider = wrapped(5, false, 1_000);
     let resp = provider.complete(&ChatRequest::new("Hi")).await.unwrap();
-    assert_eq!(resp.text, "done");
+    assert_eq!(resp.text(), "done");
     assert_eq!(provider.name(), "slow");
 }
 

@@ -48,6 +48,7 @@ pub struct Settings {
     pub logging: LoggingSettings,
     pub llm: LlmSettings,
     pub agent: AgentSettings,
+    pub tools: ToolsSettings,
 }
 
 /// Tokio runtime settings.
@@ -106,7 +107,22 @@ impl AnthropicSettings {
 #[serde(deny_unknown_fields)]
 pub struct AgentSettings {
     pub max_tokens: u32,
+    pub max_tool_rounds: u32,
     pub system_prompt: String,
+}
+
+/// Which tools the agent may use. Unknown names are rejected when the file is read.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolsSettings {
+    pub enabled: Vec<ToolKind>,
+}
+
+/// The tools this build knows about. Add a variant when a new tool is implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolKind {
+    CurrentDate,
 }
 
 impl Settings {
@@ -177,7 +193,11 @@ mod tests {
 
         [agent]
         max_tokens = 1024
+        max_tool_rounds = 5
         system_prompt = "p"
+
+        [tools]
+        enabled = ["current_date"]
     "#;
 
     fn parse(text: &str) -> Result<Settings, ConfigError> {
@@ -206,6 +226,22 @@ mod tests {
         let text = VALID.replace(r#"provider = "anthropic""#, r#"provider = "gemini""#);
         let err = parse(&text).unwrap_err();
         assert!(err.to_string().contains("gemini"), "got: {err}");
+    }
+
+    #[test]
+    fn enabled_tools_parse() {
+        let settings = parse(VALID).unwrap();
+        assert_eq!(settings.tools.enabled, vec![ToolKind::CurrentDate]);
+    }
+
+    #[test]
+    fn unknown_tool_is_rejected() {
+        let text = VALID.replace(
+            r#"enabled = ["current_date"]"#,
+            r#"enabled = ["crystal_ball"]"#,
+        );
+        let err = parse(&text).unwrap_err();
+        assert!(err.to_string().contains("crystal_ball"), "got: {err}");
     }
 
     #[test]

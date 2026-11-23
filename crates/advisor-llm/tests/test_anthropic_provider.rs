@@ -48,7 +48,7 @@ async fn successful_response_becomes_chat_response() {
     let resp = provider.complete(&ChatRequest::new("Hi")).await.unwrap();
 
     // 4. Check the conversion.
-    assert_eq!(resp.text, "Hello!");
+    assert_eq!(resp.text(), "Hello!");
     assert_eq!(resp.usage.input_tokens, 12);
     assert_eq!(resp.usage.output_tokens, 3);
 }

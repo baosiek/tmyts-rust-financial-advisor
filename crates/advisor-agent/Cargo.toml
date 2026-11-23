@@ -7,6 +7,12 @@ rust-version.workspace = true
 
 [dependencies]
 advisor-llm.workspace = true
+advisor-tools.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

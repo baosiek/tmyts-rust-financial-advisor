@@ -10,6 +10,7 @@ advisor-agent.workspace = true
 advisor-core.workspace = true
 advisor-llm.workspace = true
 advisor-observability.workspace = true
+advisor-tools.workspace = true
 dotenvy.workspace = true
 serde.workspace = true
 thiserror.workspace = true

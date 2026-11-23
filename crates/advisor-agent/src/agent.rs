@@ -1,51 +1,46 @@
 use std::sync::Arc;
 
-use advisor_llm::types::{ChatRequest, Message};
-use advisor_llm::{LlmError, LlmProvider};
+use advisor_llm::LlmProvider;
+use advisor_llm::types::{ChatRequest, ContentBlock, Message, StopReason};
+use advisor_tools::ToolRegistry;
 
-/// The agent receives its provider from outside (dependency injection), so it
-/// works with any `LlmProvider`: Anthropic, another vendor, or a mock in tests.
+use crate::{AgentConfig, AgentError};
+
+/// The agent receives its provider and its tools from outside (dependency
+/// injection), so it works with any `LlmProvider` and any set of tools.
 pub struct Agent {
     provider: Arc<dyn LlmProvider>,
-    system_prompt: String,
-    max_tokens: u32,
+    tools: Arc<ToolRegistry>,
+    config: AgentConfig,
     history: Vec<Message>,
 }
 
 impl Agent {
     pub fn new(
         provider: Arc<dyn LlmProvider>,
-        system_prompt: impl Into<String>,
-        max_tokens: u32,
+        tools: Arc<ToolRegistry>,
+        config: AgentConfig,
     ) -> Self {
         Self {
             provider,
-            system_prompt: system_prompt.into(),
-            max_tokens,
+            tools,
+            config,
             history: Vec::new(),
         }
     }
 
-    /// Sends the question with the whole conversation so far, and remembers the answer.
-    pub async fn ask(&mut self, question: impl Into<String>) -> Result<String, LlmError> {
+    /// Answers a question. When the model asks for tools, the agent runs them,
+    /// sends the results back and asks again, until the model gives a final answer.
+    pub async fn ask(&mut self, question: impl Into<String>) -> Result<String, AgentError> {
+        // If anything fails, the history goes back to how it was before the question,
+        // so the conversation never ends up with a half-finished exchange.
+        let history_before = self.history.len();
         self.history.push(Message::user(question));
 
-        let req = ChatRequest {
-            model: None,
-            system: Some(self.system_prompt.clone()),
-            messages: self.history.clone(),
-            max_tokens: self.max_tokens,
-            temperature: None,
-        };
-
-        match self.provider.complete(&req).await {
-            Ok(resp) => {
-                self.history.push(Message::assistant(resp.text.clone()));
-                Ok(resp.text)
-            }
+        match self.run_tool_loop().await {
+            Ok(answer) => Ok(answer),
             Err(e) => {
-                // Keep roles alternating: drop the question that got no answer.
-                self.history.pop();
+                self.history.truncate(history_before);
                 Err(e)
             }
         }
@@ -53,5 +48,51 @@ impl Agent {
 
     pub fn history(&self) -> &[Message] {
         &self.history
+    }
+
+    async fn run_tool_loop(&mut self) -> Result<String, AgentError> {
+        for round in 1..=self.config.max_tool_rounds {
+            let request = self.request();
+            let response = self.provider.complete(&request).await?;
+
+            // The assistant's turn is kept exactly as produced, tool calls included:
+            // the next request must contain them, or the tool results make no sense.
+            self.history
+                .push(Message::assistant_blocks(response.content.clone()));
+
+            if response.stop_reason != StopReason::ToolUse {
+                return Ok(response.text());
+            }
+
+            let mut results = Vec::new();
+            for call in response.tool_calls() {
+                let (content, is_error) = match self.tools.call(&call.name, call.input).await {
+                    Ok(output) => (output, false),
+                    // A failing tool is reported to the model, which can often recover
+                    // (e.g. by fixing its input). It does not abort the question.
+                    Err(e) => (e.to_string(), true),
+                };
+                tracing::info!(round, tool = %call.name, is_error, "tool call");
+                results.push(ContentBlock::ToolResult {
+                    tool_use_id: call.id,
+                    content,
+                    is_error,
+                });
+            }
+            self.history.push(Message::tool_results(results));
+        }
+
+        Err(AgentError::TooManyToolRounds(self.config.max_tool_rounds))
+    }
+
+    fn request(&self) -> ChatRequest {
+        ChatRequest {
+            model: None,
+            system: Some(self.config.system_prompt.clone()),
+            messages: self.history.clone(),
+            max_tokens: self.config.max_tokens,
+            temperature: None,
+            tools: self.tools.definitions(),
+        }
     }
 }

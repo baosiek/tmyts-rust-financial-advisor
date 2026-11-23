@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Tools the agent can call: a typed `Tool` trait, a registry that dispatches
+//! calls by name, and the tools themselves.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod current_date;
+mod tool;
+mod tool_error;
+mod tool_registry;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use current_date::CurrentDateTool;
+pub use tool::Tool;
+pub use tool_error::ToolError;
+pub use tool_registry::ToolRegistry;
