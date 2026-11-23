@@ -16,12 +16,15 @@ pub enum LlmError {
 
     #[error("could not parse response: {0}")]
     Parse(String),
+
+    #[error("no response within {after_ms} ms")]
+    Timeout { after_ms: u64 },
 }
 
 impl LlmError {
     pub fn is_retryable(&self) -> bool {
         match self {
-            LlmError::RateLimited { .. } | LlmError::Network(_) => true,
+            LlmError::RateLimited { .. } | LlmError::Network(_) | LlmError::Timeout { .. } => true,
             LlmError::Api { status, .. } => matches!(status, 408 | 500 | 502..=504 | 529),
             LlmError::Auth(_) | LlmError::Parse(_) => false,
         }

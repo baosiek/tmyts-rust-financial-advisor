@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::config::{ConfigError, LlmSettings, ProviderKind, required};
 use advisor_core::Secret;
-use advisor_llm::{AnthropicConfig, AnthropicProvider, LlmError, LlmProvider};
+use advisor_llm::{AnthropicConfig, AnthropicProvider, LlmError, LlmProvider, TimedProvider};
 
 #[derive(Debug, Error)]
 pub enum BuildProviderError {
@@ -14,9 +14,22 @@ pub enum BuildProviderError {
     Llm(#[from] LlmError),
 }
 
-/// Builds the provider selected in the settings. Secrets are read through
+/// Builds the provider selected in the settings and wraps it in the decorators
+/// every call goes through (today: timing and logging). Secrets are read through
 /// `get_key`, and only the selected provider's secret is required.
 pub fn build_provider<F>(
+    llm: &LlmSettings,
+    get_key: F,
+) -> Result<Arc<dyn LlmProvider>, BuildProviderError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let provider = build_concrete_provider(llm, get_key)?;
+    Ok(Arc::new(TimedProvider::new(provider, llm.call_timeout())))
+}
+
+/// Builds the bare provider selected in the settings, without decorators.
+fn build_concrete_provider<F>(
     llm: &LlmSettings,
     get_key: F,
 ) -> Result<Arc<dyn LlmProvider>, BuildProviderError>
@@ -72,6 +85,7 @@ mod tests {
     fn anthropic_settings() -> LlmSettings {
         LlmSettings {
             provider: ProviderKind::Anthropic,
+            call_timeout_secs: 180,
             anthropic: Some(AnthropicSettings {
                 url: "https://api.anthropic.com/v1/messages".parse().unwrap(),
                 version: "2023-06-01".to_string(),

@@ -1,8 +1,20 @@
 # Non-secret settings. Secrets (API keys, passwords) stay in environment variables / .env.
 
+[runtime]
+# Tokio worker threads. Usually the number of CPU cores is a good start.
+worker_threads = 10
+
+[logging]
+# Log filter: a level (error, warn, info, debug, trace), optionally per crate.
+# The RUST_LOG environment variable overrides it, e.g. RUST_LOG=debug cargo run.
+filter = "info"
+
 [llm]
 # Which provider the agent uses. Switching is a config change: edit this line and restart.
 provider = "anthropic"
+# Upper bound for one whole LLM call (TimedProvider). Keep it above the
+# provider's own HTTP timeout below, so retries added later still fit.
+call_timeout_secs = 180
 
 [llm.anthropic]
 url = "https://api.anthropic.com/v1/messages"

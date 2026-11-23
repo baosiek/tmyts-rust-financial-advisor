@@ -44,8 +44,24 @@ pub enum ConfigError {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
+    pub runtime: RuntimeSettings,
+    pub logging: LoggingSettings,
     pub llm: LlmSettings,
     pub agent: AgentSettings,
+}
+
+/// Tokio runtime settings.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeSettings {
+    pub worker_threads: usize,
+}
+
+/// Logging settings. `RUST_LOG`, when set, overrides `filter`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoggingSettings {
+    pub filter: String,
 }
 
 /// Which LLM provider to use, plus the settings of every configured provider.
@@ -53,7 +69,15 @@ pub struct Settings {
 #[serde(deny_unknown_fields)]
 pub struct LlmSettings {
     pub provider: ProviderKind,
+    /// Upper bound for one whole LLM call, measured by `TimedProvider`.
+    pub call_timeout_secs: u64,
     pub anthropic: Option<AnthropicSettings>,
+}
+
+impl LlmSettings {
+    pub fn call_timeout(&self) -> Duration {
+        Duration::from_secs(self.call_timeout_secs)
+    }
 }
 
 /// The providers this build knows about. Add a variant when a new provider is implemented.
@@ -135,8 +159,15 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
+        [runtime]
+        worker_threads = 4
+
+        [logging]
+        filter = "info"
+
         [llm]
         provider = "anthropic"
+        call_timeout_secs = 180
 
         [llm.anthropic]
         url = "https://api.anthropic.com/v1/messages"

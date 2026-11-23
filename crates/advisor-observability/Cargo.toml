@@ -6,3 +6,5 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+thiserror.workspace = true
+tracing-subscriber.workspace = true
