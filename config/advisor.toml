@@ -26,7 +26,12 @@ timeout_secs = 120
 
 [agent]
 max_tokens = 1024
+max_tool_rounds = 5
 system_prompt = """
 You are a portfolio research assistant. You explain market data and news clearly \
 and cite your sources. You never tell the user to buy or sell a specific security.
 """
+
+[tools]
+# Tools the agent may call. Remove a name to switch a tool off.
+enabled = ["current_date"]
