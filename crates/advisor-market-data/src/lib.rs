@@ -1,14 +1,16 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Market data: assets and their daily price history, read from Postgres.
+//! Everything above this crate depends on the `PriceRepository` trait, not on Postgres.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod asset;
+mod market_data_error;
+mod postgres;
+mod price_bar;
+mod price_repository;
+mod price_summary;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use asset::Asset;
+pub use market_data_error::MarketDataError;
+pub use postgres::{PgPriceRepository, PostgresConfig};
+pub use price_bar::PriceBar;
+pub use price_repository::PriceRepository;
+pub use price_summary::PriceSummary;

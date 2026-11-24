@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 advisor-llm.workspace = true
+advisor-market-data.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 schemars.workspace = true

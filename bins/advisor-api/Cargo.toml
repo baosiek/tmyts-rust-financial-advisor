@@ -9,12 +9,17 @@ rust-version.workspace = true
 advisor-agent.workspace = true
 advisor-core.workspace = true
 advisor-llm.workspace = true
+advisor-market-data.workspace = true
 advisor-observability.workspace = true
 advisor-tools.workspace = true
 dotenvy.workspace = true
+futures.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true

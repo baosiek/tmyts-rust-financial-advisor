@@ -6,3 +6,13 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+advisor-core.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

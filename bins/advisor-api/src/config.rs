@@ -38,6 +38,12 @@ pub enum ConfigError {
         "provider `{provider}` is selected but the settings file has no [llm.{provider}] section"
     )]
     MissingProviderSettings { provider: &'static str },
+
+    #[error("`{needed_by}` needs a [{section}] section in the settings file")]
+    MissingSection {
+        section: &'static str,
+        needed_by: &'static str,
+    },
 }
 
 /// Non-secret settings, read from the TOML file.
@@ -49,6 +55,41 @@ pub struct Settings {
     pub llm: LlmSettings,
     pub agent: AgentSettings,
     pub tools: ToolsSettings,
+    pub startup: StartupSettings,
+    /// Only required when a tool that reads the database is enabled.
+    pub postgres: Option<PostgresSettings>,
+}
+
+/// Checks run before the agent starts.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartupSettings {
+    /// How long each service (e.g. Postgres) may take to answer its health check.
+    pub health_check_timeout_secs: u64,
+}
+
+impl StartupSettings {
+    pub fn health_check_timeout(&self) -> Duration {
+        Duration::from_secs(self.health_check_timeout_secs)
+    }
+}
+
+/// Connection to the trading database. The password comes from `POSTGRES_PASSWORD`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostgresSettings {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub max_connections: u32,
+    pub acquire_timeout_secs: u64,
+}
+
+impl PostgresSettings {
+    pub fn acquire_timeout(&self) -> Duration {
+        Duration::from_secs(self.acquire_timeout_secs)
+    }
 }
 
 /// Tokio runtime settings.
@@ -123,6 +164,7 @@ pub struct ToolsSettings {
 #[serde(rename_all = "snake_case")]
 pub enum ToolKind {
     CurrentDate,
+    PriceHistory,
 }
 
 impl Settings {
@@ -198,6 +240,9 @@ mod tests {
 
         [tools]
         enabled = ["current_date"]
+
+        [startup]
+        health_check_timeout_secs = 10
     "#;
 
     fn parse(text: &str) -> Result<Settings, ConfigError> {
@@ -232,6 +277,20 @@ mod tests {
     fn enabled_tools_parse() {
         let settings = parse(VALID).unwrap();
         assert_eq!(settings.tools.enabled, vec![ToolKind::CurrentDate]);
+    }
+
+    #[test]
+    fn postgres_section_is_optional() {
+        let settings = parse(VALID).unwrap();
+        assert!(settings.postgres.is_none());
+
+        let text = format!(
+            "{VALID}\n[postgres]\nhost = \"localhost\"\nport = 5432\ndatabase = \"trading\"\n\
+             username = \"advisor_ro\"\nmax_connections = 5\nacquire_timeout_secs = 10\n"
+        );
+        let postgres = parse(&text).unwrap().postgres.unwrap();
+        assert_eq!(postgres.port, 5432);
+        assert_eq!(postgres.acquire_timeout(), Duration::from_secs(10));
     }
 
     #[test]

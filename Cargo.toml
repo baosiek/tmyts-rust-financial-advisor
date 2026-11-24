@@ -34,7 +34,10 @@ zeroize = "1.9"
 url = { version = "2.5", features = ["serde"] }
 wiremock = "0.6"
 toml = "1.2"
+schemars = { version = "1.2", features = ["chrono04", "rust_decimal1"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.43", features = ["serde-with-str", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "rust_decimal", "derive"] }
+futures = "0.3"
 dotenvy = "0.15"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-schemars = "1.2"
-chrono = "0.4"

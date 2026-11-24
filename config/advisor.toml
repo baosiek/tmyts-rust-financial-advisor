@@ -34,4 +34,19 @@ and cite your sources. You never tell the user to buy or sell a specific securit
 
 [tools]
 # Tools the agent may call. Remove a name to switch a tool off.
-enabled = ["current_date"]
+enabled = ["current_date", "price_history"]
+
+[startup]
+# How long each service (e.g. Postgres) may take to answer its health check.
+health_check_timeout_secs = 10
+
+[postgres]
+# Trading app's database. The password comes from POSTGRES_PASSWORD in .env.
+host = "localhost"
+port = 5433
+database = "TMYTS_DB"
+# A read-only user is recommended: see sql/advisor_readonly_user.sql
+username = "tmyts_agent"
+max_connections = 5
+# How long to wait for a free connection from the pool.
+acquire_timeout_secs = 10

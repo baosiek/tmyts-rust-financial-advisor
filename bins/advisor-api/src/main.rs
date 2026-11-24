@@ -1,5 +1,6 @@
 mod config;
 mod providers;
+mod startup;
 mod tools;
 
 use std::process::ExitCode;
@@ -64,15 +65,23 @@ async fn run(settings: Settings, question: String) -> Result<(), Box<dyn std::er
         "starting advisor"
     );
 
-    // Composition root: build the selected provider (wrapped in TimedProvider)
-    // and the enabled tools.
-    let provider = providers::build_provider(&settings.llm, |key| std::env::var(key).ok())?;
-    let tools = Arc::new(tools::build_tools(&settings.tools));
+    // Composition root: build the selected provider (wrapped in TimedProvider),
+    // the enabled tools and the services they need.
+    let get_key = |key: &str| std::env::var(key).ok();
+    let provider = providers::build_provider(&settings.llm, get_key)?;
+    let built = tools::build_tools(&settings, get_key)?;
 
-    // Inject both into the agent. The agent never names a concrete provider or tool.
+    // Before the agent starts: check every service the tools depend on.
+    startup::check_services(
+        &built.health_checks,
+        settings.startup.health_check_timeout(),
+    )
+    .await?;
+
+    // Inject provider and tools into the agent. It never names a concrete type.
     let mut agent = Agent::new(
         provider,
-        tools,
+        Arc::new(built.registry),
         AgentConfig {
             system_prompt: settings.agent.system_prompt.clone(),
             max_tokens: settings.agent.max_tokens,
