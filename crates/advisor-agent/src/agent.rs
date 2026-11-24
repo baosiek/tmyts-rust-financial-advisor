@@ -60,8 +60,16 @@ impl Agent {
             self.history
                 .push(Message::assistant_blocks(response.content.clone()));
 
-            if response.stop_reason != StopReason::ToolUse {
-                return Ok(response.text());
+            match response.stop_reason {
+                StopReason::ToolUse => {}
+                // A cut-off answer is incomplete (and may be empty, e.g. when the cut
+                // happened inside a tool call). Never present it as the final answer.
+                StopReason::MaxTokens => {
+                    return Err(AgentError::MaxTokensReached {
+                        max_tokens: self.config.max_tokens,
+                    });
+                }
+                _ => return Ok(response.text()),
             }
 
             let mut results = Vec::new();

@@ -189,3 +189,21 @@ async fn provider_error_rolls_back_the_history() {
     assert!(matches!(err, AgentError::Llm(LlmError::Network(_))));
     assert!(agent.history().is_empty());
 }
+
+#[tokio::test]
+async fn cut_off_answer_is_an_error_not_an_empty_answer() {
+    let provider = ScriptedProvider::new(vec![Ok(ChatResponse {
+        content: vec![],
+        model: "scripted-model".to_string(),
+        stop_reason: StopReason::MaxTokens,
+        usage: Usage::default(),
+    })]);
+    let mut agent = agent(provider, 5);
+
+    let err = agent.ask("Long question").await.unwrap_err();
+    assert!(
+        matches!(err, AgentError::MaxTokensReached { max_tokens: 100 }),
+        "got {err:?}"
+    );
+    assert!(agent.history().is_empty(), "history is rolled back");
+}

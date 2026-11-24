@@ -1,14 +1,14 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! News retrieval from Qdrant. Everything above this crate depends on the
+//! `NewsRepository` trait, not on Qdrant.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod news_article;
+mod news_error;
+mod news_query;
+mod news_repository;
+mod qdrant;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use news_article::NewsArticle;
+pub use news_error::NewsError;
+pub use news_query::NewsQuery;
+pub use news_repository::NewsRepository;
+pub use qdrant::{QdrantConfig, QdrantNewsRepository};

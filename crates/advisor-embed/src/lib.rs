@@ -1,14 +1,11 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Text embeddings: turning text into the vectors Qdrant searches with.
+//! The vectors must come from the same model that embedded the stored news,
+//! so this crate calls the same embedding service the ingestion used.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod embed_error;
+mod embedder;
+mod http_embedder;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use embed_error::EmbedError;
+pub use embedder::Embedder;
+pub use http_embedder::{HttpEmbedder, HttpEmbedderConfig};

@@ -25,7 +25,7 @@ timeout_secs = 120
 # [llm.openai]   <- added once an OpenAiProvider exists
 
 [agent]
-max_tokens = 1024
+max_tokens = 4096
 max_tool_rounds = 5
 system_prompt = """
 You are a portfolio research assistant. You explain market data and news clearly \
@@ -34,7 +34,7 @@ and cite your sources. You never tell the user to buy or sell a specific securit
 
 [tools]
 # Tools the agent may call. Remove a name to switch a tool off.
-enabled = ["current_date", "price_history"]
+enabled = ["current_date", "price_history", "search_news"]
 
 [startup]
 # How long each service (e.g. Postgres) may take to answer its health check.
@@ -50,3 +50,24 @@ username = "tmyts_agent"
 max_connections = 5
 # How long to wait for a free connection from the pool.
 acquire_timeout_secs = 10
+
+[embeddings]
+# The embedding service that embedded the news in Qdrant (the one tmyts-fin-advisor used).
+# It must be the same model, or searches compare vectors that do not belong together.
+url = "http://localhost:8500/embed"
+timeout_secs = 15
+# Must equal the Qdrant collection's vector size; checked at startup.
+vector_size = 384
+
+[qdrant]
+# gRPC port (6334), not the REST/dashboard port (6333).
+url = "http://localhost:6334"
+collection = "rss_news_v1"
+timeout_secs = 10
+
+[news_search]
+# Results when the model does not ask for a number, and the most it may ask for.
+default_results = 5
+max_results = 10
+# Article text is cut to this many characters per result (each one costs tokens).
+max_excerpt_chars = 1500

@@ -39,6 +39,12 @@ pub enum ConfigError {
     )]
     MissingProviderSettings { provider: &'static str },
 
+    #[error("could not create the {service} client: {reason}")]
+    Service {
+        service: &'static str,
+        reason: String,
+    },
+
     #[error("`{needed_by}` needs a [{section}] section in the settings file")]
     MissingSection {
         section: &'static str,
@@ -58,6 +64,52 @@ pub struct Settings {
     pub startup: StartupSettings,
     /// Only required when a tool that reads the database is enabled.
     pub postgres: Option<PostgresSettings>,
+    /// The next three are only required when `search_news` is enabled.
+    pub embeddings: Option<EmbeddingsSettings>,
+    pub qdrant: Option<QdrantSettings>,
+    pub news_search: Option<NewsSearchSettings>,
+}
+
+/// The embedding service that embedded the stored news. Must be the same one,
+/// or searches compare vectors from different models.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmbeddingsSettings {
+    pub url: Url,
+    pub timeout_secs: u64,
+    /// Size of the vectors; must equal the Qdrant collection's vector size.
+    pub vector_size: usize,
+}
+
+impl EmbeddingsSettings {
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
+    }
+}
+
+/// The Qdrant news collection. `QDRANT_API_KEY` (optional) comes from the environment.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QdrantSettings {
+    /// gRPC endpoint, usually port 6334.
+    pub url: Url,
+    pub collection: String,
+    pub timeout_secs: u64,
+}
+
+impl QdrantSettings {
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
+    }
+}
+
+/// Limits of the `search_news` tool.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewsSearchSettings {
+    pub default_results: u32,
+    pub max_results: u32,
+    pub max_excerpt_chars: usize,
 }
 
 /// Checks run before the agent starts.
@@ -165,6 +217,7 @@ pub struct ToolsSettings {
 pub enum ToolKind {
     CurrentDate,
     PriceHistory,
+    SearchNews,
 }
 
 impl Settings {
@@ -210,6 +263,16 @@ where
         Some(value) if value.trim().is_empty() => Err(ConfigError::Empty(name)),
         Some(value) => Ok(value.trim().to_string()),
     }
+}
+
+/// Reads an optional variable: `None` when it is missing or empty.
+pub fn optional<F>(get_key: &F, name: &str) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    get_key(name)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 #[cfg(test)]
@@ -291,6 +354,19 @@ mod tests {
         let postgres = parse(&text).unwrap().postgres.unwrap();
         assert_eq!(postgres.port, 5432);
         assert_eq!(postgres.acquire_timeout(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn news_sections_parse() {
+        let text = format!(
+            "{VALID}\n[embeddings]\nurl = \"http://localhost:8080/embed\"\ntimeout_secs = 15\nvector_size = 384\n\
+             [qdrant]\nurl = \"http://localhost:6334\"\ncollection = \"news\"\ntimeout_secs = 10\n\
+             [news_search]\ndefault_results = 5\nmax_results = 10\nmax_excerpt_chars = 1500\n"
+        );
+        let settings = parse(&text).unwrap();
+        assert_eq!(settings.embeddings.unwrap().vector_size, 384);
+        assert_eq!(settings.qdrant.unwrap().collection, "news");
+        assert_eq!(settings.news_search.unwrap().max_results, 10);
     }
 
     #[test]

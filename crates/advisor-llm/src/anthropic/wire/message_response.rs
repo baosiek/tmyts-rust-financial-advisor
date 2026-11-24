@@ -12,12 +12,21 @@ pub(crate) struct MessageResponse {
 
 impl From<MessageResponse> for ChatResponse {
     fn from(r: MessageResponse) -> Self {
+        let received = r.content.len();
+        let content: Vec<_> = r
+            .content
+            .into_iter()
+            .filter_map(ContentBlock::into_neutral)
+            .collect();
+        if content.len() < received {
+            // e.g. "thinking" blocks: not an error, but worth seeing when an answer looks empty.
+            tracing::debug!(
+                dropped = received - content.len(),
+                "dropped content blocks of types this code does not handle"
+            );
+        }
         ChatResponse {
-            content: r
-                .content
-                .into_iter()
-                .filter_map(ContentBlock::into_neutral)
-                .collect(),
+            content,
             model: r.model,
             stop_reason: stop_reason_from_api(r.stop_reason.as_deref()),
             usage: Usage {
