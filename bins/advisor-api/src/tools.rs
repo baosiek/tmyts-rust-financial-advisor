@@ -12,6 +12,7 @@ use advisor_news_rag::{QdrantConfig, QdrantNewsRepository};
 use advisor_tools::{
     CurrentDateTool, PriceHistoryTool, SearchNewsConfig, SearchNewsTool, ToolRegistry,
 };
+use advisor_warden::{PromptWarden, WardenConfig};
 
 use crate::config::{ConfigError, PostgresSettings, Settings, ToolKind, optional, required};
 
@@ -50,11 +51,13 @@ where
                 let embedder = Arc::new(build_embedder(settings)?);
                 let news = Arc::new(build_qdrant(settings, &get_key)?);
                 let limits = section(&settings.news_search, "news_search")?;
+                let warden = Arc::new(build_warden(settings)?);
                 health_checks.push(embedder.clone());
                 health_checks.push(news.clone());
                 registry.register(SearchNewsTool::new(
                     embedder,
                     news,
+                    warden,
                     SearchNewsConfig {
                         default_results: limits.default_results,
                         max_results: limits.max_results,
@@ -77,6 +80,17 @@ fn section<'a, T>(value: &'a Option<T>, name: &'static str) -> Result<&'a T, Con
         section: name,
         needed_by: "search_news",
     })
+}
+
+fn build_warden(settings: &Settings) -> Result<PromptWarden, ConfigError> {
+    let warden = section(&settings.warden, "warden")?;
+    let config = WardenConfig::new(warden.sanitize_at, warden.block_at).map_err(|e| {
+        ConfigError::Service {
+            service: "warden",
+            reason: e.to_string(),
+        }
+    })?;
+    Ok(PromptWarden::new(config))
 }
 
 fn build_embedder(settings: &Settings) -> Result<HttpEmbedder, ConfigError> {
@@ -214,7 +228,8 @@ mod tests {
     fn news_sections() -> &'static str {
         "[embeddings]\nurl = \"http://localhost:8080/embed\"\ntimeout_secs = 1\nvector_size = 384\n\
          [qdrant]\nurl = \"http://localhost:6334\"\ncollection = \"news\"\ntimeout_secs = 1\n\
-         [news_search]\ndefault_results = 5\nmax_results = 10\nmax_excerpt_chars = 1500\n"
+         [news_search]\ndefault_results = 5\nmax_results = 10\nmax_excerpt_chars = 1500\n\
+         [warden]\nsanitize_at = 0.3\nblock_at = 0.7\n"
     }
 
     #[test]
@@ -263,5 +278,23 @@ mod tests {
             .err()
             .unwrap();
         assert!(matches!(err, ConfigError::Missing("POSTGRES_PASSWORD")));
+    }
+
+    #[test]
+    fn invalid_warden_thresholds_are_reported() {
+        let mut text = settings_text(r#""search_news""#, false);
+        text.push_str(&news_sections().replace("block_at = 0.7", "block_at = 0.2"));
+        let settings = Settings::from_toml_str(&text, Path::new("test.toml")).unwrap();
+        let err = build_tools(&settings, |_| None).err().unwrap();
+        assert!(
+            matches!(
+                err,
+                ConfigError::Service {
+                    service: "warden",
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 }

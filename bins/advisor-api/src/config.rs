@@ -68,6 +68,18 @@ pub struct Settings {
     pub embeddings: Option<EmbeddingsSettings>,
     pub qdrant: Option<QdrantSettings>,
     pub news_search: Option<NewsSearchSettings>,
+    /// Prompt-injection filter for third-party text (news). Required with `search_news`.
+    pub warden: Option<WardenSettings>,
+}
+
+/// Score thresholds of the prompt-injection filter (0.0 to 1.0).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WardenSettings {
+    /// From this score on, suspicious parts are removed and the result is flagged.
+    pub sanitize_at: f64,
+    /// From this score on, the article is withheld from the model.
+    pub block_at: f64,
 }
 
 /// The embedding service that embedded the stored news. Must be the same one,
@@ -367,6 +379,7 @@ mod tests {
         assert_eq!(settings.embeddings.unwrap().vector_size, 384);
         assert_eq!(settings.qdrant.unwrap().collection, "news");
         assert_eq!(settings.news_search.unwrap().max_results, 10);
+        assert!(settings.warden.is_none());
     }
 
     #[test]

@@ -1,14 +1,19 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Prompt-injection defense for text that comes from third parties (news, web
+//! pages) before it reaches the model. Adapted from the PromptWarden approach in
+//! Sharda, "Rust for AI Engineers", ch. 7: pattern rules with weights, a combined
+//! score, and a sanitizer, so suspicious text is cleaned or withheld.
+//!
+//! This is a filter, not a guarantee: it catches known attack shapes and makes
+//! attacks visible in the logs. The model is also told to treat such text as
+//! data, and tools are read-only, so a missed attack has limited reach.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod category;
+mod rules;
+mod screening;
+mod warden;
+mod warden_config;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use category::Category;
+pub use screening::{Action, Screening};
+pub use warden::PromptWarden;
+pub use warden_config::{WardenConfig, WardenConfigError};

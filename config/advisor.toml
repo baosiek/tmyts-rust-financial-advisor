@@ -71,3 +71,11 @@ default_results = 5
 max_results = 10
 # Article text is cut to this many characters per result (each one costs tokens).
 max_excerpt_chars = 1500
+
+[warden]
+# Prompt-injection filter for news text, scored 0.0 (clean) to 1.0 (certain attack).
+# Each rule category adds evidence; two weak signals together score higher than one.
+# From sanitize_at on, suspicious parts are replaced by [removed] and the result is flagged;
+# from block_at on, the article is withheld from the model. Detections are logged as warnings.
+sanitize_at = 0.3
+block_at = 0.7

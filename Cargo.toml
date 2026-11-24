@@ -41,5 +41,6 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 futures = "0.3"
 qdrant-client = { version = "1.20", default-features = false, features = ["serde"] }
 prost-types = "0.14"
+regex = "1.13"
 dotenvy = "0.15"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -10,6 +10,7 @@ advisor-embed.workspace = true
 advisor-llm.workspace = true
 advisor-market-data.workspace = true
 advisor-news-rag.workspace = true
+advisor-warden.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
@@ -17,6 +18,7 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
