@@ -1,8 +1,26 @@
 [package]
 name = "advisor-evals"
+description = "Runs the eval cases against the real agent and writes a report."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+advisor-agent.workspace = true
+advisor-app.workspace = true
+advisor-core.workspace = true
+advisor-llm.workspace = true
+advisor-observability.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+advisor-tools.workspace = true
+async-trait.workspace = true
+schemars.workspace = true

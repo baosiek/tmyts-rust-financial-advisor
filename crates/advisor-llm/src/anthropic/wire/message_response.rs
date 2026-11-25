@@ -32,6 +32,9 @@ impl From<MessageResponse> for ChatResponse {
             usage: Usage {
                 input_tokens: r.usage.input_tokens,
                 output_tokens: r.usage.output_tokens,
+                // Absent (or null) when the request used no prompt caching.
+                cache_creation_input_tokens: r.usage.cache_creation_input_tokens.unwrap_or(0),
+                cache_read_input_tokens: r.usage.cache_read_input_tokens.unwrap_or(0),
             },
         }
     }
@@ -77,5 +80,27 @@ mod tests {
             matches!(&resp.content[1], Neutral::ToolUse { name, .. } if name == "current_date")
         );
         assert_eq!(resp.tool_calls()[0].id, "toolu_1");
+    }
+
+    #[test]
+    fn cache_tokens_are_read_and_null_means_zero() {
+        let body = json!({
+            "model": "m",
+            "stop_reason": "end_turn",
+            "content": [],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cache_creation_input_tokens": null,
+                "cache_read_input_tokens": 900
+            }
+        });
+        let resp: ChatResponse = serde_json::from_value::<MessageResponse>(body)
+            .unwrap()
+            .into();
+
+        assert_eq!(resp.usage.cache_creation_input_tokens, 0);
+        assert_eq!(resp.usage.cache_read_input_tokens, 900);
+        assert_eq!(resp.usage.total_input_tokens(), 910);
     }
 }

@@ -79,3 +79,37 @@ max_excerpt_chars = 1500
 # from block_at on, the article is withheld from the model. Detections are logged as warnings.
 sanitize_at = 0.3
 block_at = 0.7
+
+# Token prices for cost tracking, in USD per million tokens (MTok).
+# Prices change: check https://platform.claude.com/docs/en/about-claude/pricing
+# (these were taken from it in November 2026). A model without an entry still
+# works, but its cost is reported as "unknown", and evals with max_cost_usd fail.
+# The model id must match [llm.anthropic] model (a longer dated id also matches).
+[pricing.models."claude-sonnet-5-5"]
+input_per_mtok = 2.0
+output_per_mtok = 10.0
+# 5-minute cache writes; cache hits are a fraction of normal input.
+cache_write_per_mtok = 2.5
+cache_read_per_mtok = 0.10
+
+[pricing.models."claude-haiku-5-5"]
+input_per_mtok = 0.10
+output_per_mtok = 0.50
+cache_write_per_mtok = 0.125
+cache_read_per_mtok = 0.01
+# Haiku 5.5 bills a whole request at higher prices when its input (cache
+# reads and writes included) is over 100,000 tokens.
+[pricing.models."claude-haiku-5-5".long_context]
+above_input_tokens = 100_000
+input_per_mtok = 0.50
+output_per_mtok = 2.50
+cache_write_per_mtok = 0.625
+cache_read_per_mtok = 0.05
+
+[evals]
+# Run with: cargo run -p advisor-evals   (calls the paid API, real Postgres and Qdrant)
+cases_file = "evals/cases.toml"
+# One <timestamp>.json and one <timestamp>.md per run.
+report_dir = "evals/reports"
+# Upper bound for one whole case (all its LLM and tool calls).
+case_timeout_secs = 300

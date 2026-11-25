@@ -23,11 +23,12 @@ It is the research part of a larger platform:
 | `search_news` (Qdrant + embeddings) | Done |
 | Startup health checks (Postgres, embeddings, Qdrant) | Done |
 | Prompt-injection warden for news text | Done |
+| Cost tracking (tokens and USD per question, prices from config) | Done |
+| Eval suite with rule-based checks and reports | Done |
 | Portfolio tools (holdings, risk metrics) | Planned |
 | Axum API with SSE streaming for Angular | Planned |
-| Retries, rate limiting, cost tracking, Prometheus metrics | Planned |
+| Retries, rate limiting, Prometheus metrics | Planned |
 | Docker image, K3d deployment | Planned |
-| Evals in CI | Planned |
 
 ## How a question is answered
 
@@ -54,12 +55,15 @@ The loop repeats until the model gives a final answer, at most `max_tool_rounds`
 A Cargo workspace. Dependencies only point downward; `advisor-core` depends on nothing in the workspace.
 
 ```
-bins/advisor-api          composition root: config, wiring, startup checks
+bins/advisor-api          CLI: one question, one answer
+bins/advisor-evals        eval runner: cases -> agent -> checks -> report
         |
-crates/advisor-agent      tool-calling loop, conversation history
+crates/advisor-app        composition root: settings, factories, startup checks
+        |
+crates/advisor-agent      tool-calling loop, conversation history, run trace
         |
 crates/advisor-tools      typed tools + registry: current_date, get_price_history, search_news
-crates/advisor-llm        LlmProvider trait, Anthropic provider, TimedProvider decorator
+crates/advisor-llm        LlmProvider trait, Anthropic provider, TimedProvider, pricing
         |
 crates/advisor-market-data   PriceRepository (Postgres, sqlx)
 crates/advisor-news-rag      NewsRepository (Qdrant)
@@ -70,12 +74,12 @@ crates/advisor-core       Secret, timed(), HealthCheck
 crates/advisor-observability   tracing setup
 ```
 
-Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-ingest`, `advisor-mcp`, `advisor-evals`) are placeholders for now.
+Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-ingest`, `advisor-mcp`) are placeholders for now.
 
 ## Design decisions
 
 - **No agent framework.** The provider client and agent loop are about a few hundred lines; writing them keeps prompts, retries, costs and failure handling visible.
-- **Dependency injection everywhere.** The agent receives an `Arc<dyn LlmProvider>` and a `ToolRegistry`; tools receive `Arc<dyn PriceRepository>`, `Arc<dyn NewsRepository>` and `Arc<dyn Embedder>`. Only the composition root (`bins/advisor-api`) names concrete types, so tests inject in-memory fakes and need no network or database.
+- **Dependency injection everywhere.** The agent receives an `Arc<dyn LlmProvider>` and a `ToolRegistry`; tools receive `Arc<dyn PriceRepository>`, `Arc<dyn NewsRepository>` and `Arc<dyn Embedder>`. Only the composition root (`crates/advisor-app`, shared by every binary) names concrete types, so tests inject in-memory fakes and need no network or database.
 - **Configuration, not code, selects behaviour.** The LLM provider (`[llm] provider`) and the enabled tools (`[tools] enabled`) come from the settings file. Unknown names are rejected when the file is read.
 - **Wire types separate from domain types.** Anthropic's JSON shapes live in private `wire` modules and convert to provider-neutral types (`ChatRequest`, `ChatResponse`, `ContentBlock`), so an API change stays inside one module and a second provider needs no changes elsewhere.
 - **Typed tools.** A tool declares a Rust input struct; its JSON schema (including doc comments as descriptions) is generated with `schemars`, and the model's input is validated against it before the tool runs.
@@ -83,6 +87,8 @@ Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-in
 - **Fail fast at startup.** Every service a tool depends on is health-checked in parallel before the agent starts, including a check that the embedding size matches the Qdrant collection.
 - **Untrusted text is screened.** News is written by third parties and goes straight into the model's context, which makes it a channel for indirect prompt injection. Every title and excerpt passes through `advisor-warden`: weighted pattern rules (instruction overrides, role manipulation, exfiltration attempts, fake conversation markers, hidden Unicode) produce a score; suspicious text is cleaned and flagged, likely attacks are withheld, and every detection is logged. The rules are tested against ordinary financial language to keep false positives out. It is one layer, not a guarantee: tools are also read-only and the model is told to treat news as information, never as instructions.
 - **Least privilege.** The advisor reads the trading database with a read-only user (`sql/advisor_readonly_user.sql`). Secrets are wrapped in a `Secret` type that never prints its value and is zeroed on drop.
+- **Cost is measured, not guessed.** Every LLM call's tokens (including prompt-cache reads and writes) are recorded in a `RunTrace` and priced per call from `[pricing.models]` in the settings file, so a price change is a config edit. A model without a price reports cost as *unknown*, never as zero. Failed questions keep their trace, because they cost money too.
+- **Evals check behaviour, not wording.** `evals/cases.toml` lists questions with rules: which tools must (not) be called and with which inputs, phrases the answer must (not) contain, a cited link for news, and limits on LLM calls and cost. The checks are deterministic code; the runner uses the real agent and services and writes JSON and Markdown reports. Cases include a buy/sell-advice request and a direct prompt-injection attempt.
 - **Deterministic requests.** Tool definitions are kept in a `BTreeMap`, so requests are byte-for-byte identical between runs (a prerequisite for prompt caching).
 
 ## Requirements
@@ -122,6 +128,21 @@ The answer goes to stdout; the log (stderr) shows the startup health checks, eac
 ```bash
 RUST_LOG=debug cargo run -p advisor-api -- "..."
 ```
+
+Each answer ends with a log line with the LLM calls, tools, tokens and cost of the question:
+
+```
+INFO advisor_api: question answered llm_calls=2 tools=["price_history"] input_tokens=4030 output_tokens=912 cost_usd=$0.017380 elapsed_ms=6120
+```
+
+## Evals
+
+```bash
+cargo run -p advisor-evals                          # all cases in evals/cases.toml
+cargo run -p advisor-evals -- --only price_aapl     # one case (repeat --only for more)
+```
+
+Evals call the paid API and the real Postgres and Qdrant, so they are run on demand (before a release, after a prompt or model change), not on every build. Each run prints a summary and writes `evals/reports/eval-<timestamp>.json` and `.md`. The exit code is 0 when every case passed and 1 otherwise, so a run can gate a deployment. The pipeline itself (agent, checks, report) is covered by free, deterministic tests with a scripted provider.
 
 ## Tests
 

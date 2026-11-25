@@ -44,6 +44,7 @@ impl LlmProvider for TimedProvider {
                     elapsed_ms,
                     input_tokens = resp.usage.input_tokens,
                     output_tokens = resp.usage.output_tokens,
+                    cache_read_tokens = resp.usage.cache_read_input_tokens,
                     stop_reason = ?resp.stop_reason,
                     "llm call succeeded"
                 );

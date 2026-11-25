@@ -1,9 +1,11 @@
 //! Reads configuration: secrets from environment variables (and `.env`),
 //! every other setting from the TOML file named by `ADVISOR_CONFIG`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use advisor_llm::pricing::{ModelPrice, PriceTable};
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
@@ -70,6 +72,34 @@ pub struct Settings {
     pub news_search: Option<NewsSearchSettings>,
     /// Prompt-injection filter for third-party text (news). Required with `search_news`.
     pub warden: Option<WardenSettings>,
+    /// Prices per model, for cost tracking. Without it, cost is reported as unknown.
+    pub pricing: Option<PricingSettings>,
+    /// Settings of the evals runner (`bins/advisor-evals`). Only it needs them.
+    pub evals: Option<EvalsSettings>,
+}
+
+/// Token prices, one table per model id: `[pricing.models."<model id>"]`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PricingSettings {
+    pub models: BTreeMap<String, ModelPrice>,
+}
+
+/// Where the eval cases are and where reports go. Relative paths are resolved
+/// from the directory the runner is started in (the project root with `cargo run`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvalsSettings {
+    pub cases_file: PathBuf,
+    pub report_dir: PathBuf,
+    /// Upper bound for one whole case: every LLM and tool call of the question.
+    pub case_timeout_secs: u64,
+}
+
+impl EvalsSettings {
+    pub fn case_timeout(&self) -> Duration {
+        Duration::from_secs(self.case_timeout_secs)
+    }
 }
 
 /// Score thresholds of the prompt-injection filter (0.0 to 1.0).
@@ -233,6 +263,14 @@ pub enum ToolKind {
 }
 
 impl Settings {
+    /// The configured prices; empty when there is no `[pricing]` section.
+    pub fn price_table(&self) -> PriceTable {
+        self.pricing
+            .as_ref()
+            .map(|pricing| PriceTable::new(pricing.models.clone()))
+            .unwrap_or_default()
+    }
+
     /// Loads `.env` (if present) into the process environment, then reads the
     /// settings file named by `ADVISOR_CONFIG`. Real environment variables take
     /// precedence over `.env` values.
@@ -380,6 +418,29 @@ mod tests {
         assert_eq!(settings.qdrant.unwrap().collection, "news");
         assert_eq!(settings.news_search.unwrap().max_results, 10);
         assert!(settings.warden.is_none());
+    }
+
+    #[test]
+    fn pricing_and_evals_sections_parse() {
+        let text = format!(
+            "{VALID}\n[pricing.models.\"claude-x\"]\ninput_per_mtok = 2.0\noutput_per_mtok = 10.0\n\
+             cache_write_per_mtok = 2.5\ncache_read_per_mtok = 0.1\n\
+             [evals]\ncases_file = \"evals/cases.toml\"\nreport_dir = \"evals/reports\"\n\
+             case_timeout_secs = 300\n"
+        );
+        let settings = parse(&text).unwrap();
+        let prices = settings.price_table();
+        assert_eq!(prices.price("claude-x").unwrap().output_per_mtok, 10.0);
+        assert_eq!(
+            settings.evals.unwrap().case_timeout(),
+            Duration::from_secs(300)
+        );
+    }
+
+    #[test]
+    fn missing_pricing_means_empty_table() {
+        let settings = parse(VALID).unwrap();
+        assert!(settings.price_table().price("m").is_none());
     }
 
     #[test]

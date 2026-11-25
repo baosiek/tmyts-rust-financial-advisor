@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["bins/advisor-api", "bins/advisor-evals", "bins/advisor-ingest", "bins/advisor-mcp","crates/advisor-agent","crates/advisor-core", "crates/advisor-embed", "crates/advisor-llm", "crates/advisor-market-data", "crates/advisor-memory", "crates/advisor-news-rag", "crates/advisor-observability", "crates/advisor-portfolio", "crates/advisor-tools", "crates/advisor-warden"]
+members = ["bins/advisor-api", "bins/advisor-evals", "bins/advisor-ingest", "bins/advisor-mcp","crates/advisor-agent", "crates/advisor-app","crates/advisor-core", "crates/advisor-embed", "crates/advisor-llm", "crates/advisor-market-data", "crates/advisor-memory", "crates/advisor-news-rag", "crates/advisor-observability", "crates/advisor-portfolio", "crates/advisor-tools", "crates/advisor-warden"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,6 +20,7 @@ advisor-warden = { path = "crates/advisor-warden" }
 advisor-memory = { path = "crates/advisor-memory" }
 advisor-tools = { path = "crates/advisor-tools" }
 advisor-agent = { path = "crates/advisor-agent" }
+advisor-app = { path = "crates/advisor-app" }
 advisor-observability = { path = "crates/advisor-observability" }
 
 # external (add version numbers as you introduce each one)

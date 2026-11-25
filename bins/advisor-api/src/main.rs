@@ -1,13 +1,7 @@
-mod config;
-mod providers;
-mod startup;
-mod tools;
-
 use std::process::ExitCode;
-use std::sync::Arc;
 
-use advisor_agent::{Agent, AgentConfig};
-use config::Settings;
+use advisor_app::App;
+use advisor_app::config::Settings;
 
 /// `main` is synchronous on purpose: the runtime's thread count comes from the
 /// settings file, so settings must be read before the runtime exists.
@@ -65,33 +59,36 @@ async fn run(settings: Settings, question: String) -> Result<(), Box<dyn std::er
         "starting advisor"
     );
 
-    // Composition root: build the selected provider (wrapped in TimedProvider),
-    // the enabled tools and the services they need.
+    // Composition root (advisor-app): provider, tools, services and their health checks.
     let get_key = |key: &str| std::env::var(key).ok();
-    let provider = providers::build_provider(&settings.llm, get_key)?;
-    let built = tools::build_tools(&settings, get_key)?;
-
-    // Before the agent starts: check every service the tools depend on.
-    startup::check_services(
-        &built.health_checks,
-        settings.startup.health_check_timeout(),
-    )
-    .await?;
-
-    // Inject provider and tools into the agent. It never names a concrete type.
-    let mut agent = Agent::new(
-        provider,
-        Arc::new(built.registry),
-        AgentConfig {
-            system_prompt: settings.agent.system_prompt.clone(),
-            max_tokens: settings.agent.max_tokens,
-            max_tool_rounds: settings.agent.max_tool_rounds,
-        },
-    );
+    let app = App::build(&settings, get_key).await?;
+    let mut agent = app.new_agent();
 
     // The answer is program output, so it goes to stdout; diagnostics go to the log.
     let answer = agent.ask(question).await?;
-    println!("{answer}");
+    println!("{}", answer.text);
+
+    // One line per question with what it cost: the number to watch.
+    let usage = answer.trace.usage();
+    let cost = answer.trace.cost_usd(app.prices());
+    tracing::info!(
+        llm_calls = answer.trace.llm_calls.len(),
+        tools = ?answer.trace.tool_names(),
+        input_tokens = usage.input_tokens,
+        output_tokens = usage.output_tokens,
+        cache_read_tokens = usage.cache_read_input_tokens,
+        cost_usd = %format_cost(cost),
+        elapsed_ms = answer.trace.elapsed.as_millis() as u64,
+        "question answered"
+    );
 
     Ok(())
+}
+
+/// `$0.012345`, or `unknown` when a model has no configured price.
+fn format_cost(cost: Option<f64>) -> String {
+    match cost {
+        Some(usd) => format!("${usd:.6}"),
+        None => "unknown".to_string(),
+    }
 }

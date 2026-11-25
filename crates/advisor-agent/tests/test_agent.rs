@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use advisor_agent::{Agent, AgentConfig, AgentError};
+use advisor_llm::pricing::{ModelPrice, PriceTable};
 use advisor_llm::types::{ChatRequest, ChatResponse, ContentBlock, Role, StopReason, Usage};
 use advisor_llm::{LlmError, LlmProvider};
 use advisor_tools::{Tool, ToolError, ToolRegistry};
@@ -107,7 +108,7 @@ async fn plain_answer_needs_one_call() {
     let provider = ScriptedProvider::new(vec![answer("Hello!")]);
     let mut agent = agent(provider.clone(), 5);
 
-    assert_eq!(agent.ask("Hi").await.unwrap(), "Hello!");
+    assert_eq!(agent.ask("Hi").await.unwrap().text, "Hello!");
 
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
@@ -124,7 +125,7 @@ async fn tool_call_is_run_and_result_sent_back() {
     let mut agent = agent(provider.clone(), 5);
 
     assert_eq!(
-        agent.ask("Price of AAPL?").await.unwrap(),
+        agent.ask("Price of AAPL?").await.unwrap().text,
         "AAPL trades at 123.45."
     );
 
@@ -206,4 +207,80 @@ async fn cut_off_answer_is_an_error_not_an_empty_answer() {
         "got {err:?}"
     );
     assert!(agent.history().is_empty(), "history is rolled back");
+}
+
+fn priced_tool_call() -> Result<ChatResponse, LlmError> {
+    let mut response = tool_call("toolu_1", "price", json!({ "ticker": "AAPL" }))?;
+    response.usage = Usage {
+        input_tokens: 1_000,
+        output_tokens: 100,
+        ..Usage::default()
+    };
+    Ok(response)
+}
+
+fn priced_answer() -> Result<ChatResponse, LlmError> {
+    let mut response = answer("AAPL trades at 123.45.")?;
+    response.usage = Usage {
+        input_tokens: 2_000,
+        output_tokens: 200,
+        ..Usage::default()
+    };
+    Ok(response)
+}
+
+fn prices() -> PriceTable {
+    PriceTable::new(
+        [(
+            "scripted-model".to_string(),
+            ModelPrice {
+                input_per_mtok: 2.0,
+                output_per_mtok: 10.0,
+                cache_write_per_mtok: 2.5,
+                cache_read_per_mtok: 0.1,
+                long_context: None,
+            },
+        )]
+        .into(),
+    )
+}
+
+#[tokio::test]
+async fn answer_carries_calls_tools_tokens_and_cost() {
+    let provider = ScriptedProvider::new(vec![priced_tool_call(), priced_answer()]);
+    let mut agent = agent(provider, 5);
+
+    let answer = agent.ask("Price of AAPL?").await.unwrap();
+    let trace = &answer.trace;
+
+    assert_eq!(trace.llm_calls.len(), 2);
+    assert_eq!(trace.tool_names(), vec!["price"]);
+    assert_eq!(trace.tool_calls[0].input, json!({ "ticker": "AAPL" }));
+    assert!(!trace.tool_calls[0].is_error);
+    assert_eq!(trace.usage().input_tokens, 3_000);
+    assert_eq!(trace.usage().output_tokens, 300);
+    // 3,000 input at $2/MTok + 300 output at $10/MTok = $0.006 + $0.003.
+    let cost = trace.cost_usd(&prices()).unwrap();
+    assert!((cost - 0.009).abs() < 1e-12, "got {cost}");
+}
+
+#[tokio::test]
+async fn failed_question_keeps_its_trace() {
+    let provider = ScriptedProvider::new(vec![priced_tool_call(), priced_tool_call()]);
+    let mut agent = agent(provider, 2);
+
+    agent.ask("Loop").await.unwrap_err();
+
+    let trace = agent.last_trace();
+    assert_eq!(trace.llm_calls.len(), 2, "the tokens were spent anyway");
+    assert_eq!(trace.usage().input_tokens, 2_000);
+}
+
+#[tokio::test]
+async fn unpriced_model_gives_unknown_cost_not_zero() {
+    let provider = ScriptedProvider::new(vec![priced_answer()]);
+    let mut agent = agent(provider, 5);
+
+    let answer = agent.ask("Hi").await.unwrap();
+    assert_eq!(answer.trace.cost_usd(&PriceTable::default()), None);
 }

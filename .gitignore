@@ -2,3 +2,6 @@
 /target
 .env
 *.zip
+
+# Eval run reports (regenerated on every run)
+/evals/reports/
