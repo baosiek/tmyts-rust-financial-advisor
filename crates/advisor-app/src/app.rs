@@ -24,6 +24,25 @@ pub enum AppError {
     Startup(#[from] StartupError),
 }
 
+/// Builds the enabled tools and checks every service they depend on, without
+/// an LLM provider. Used by the agent (through `App::build`) and by the MCP
+/// server, where the client brings its own model and needs no API key here.
+pub async fn build_checked_tools<F>(
+    settings: &Settings,
+    get_key: F,
+) -> Result<ToolRegistry, AppError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let built = build_tools(settings, &get_key)?;
+    check_services(
+        &built.health_checks,
+        settings.startup.health_check_timeout(),
+    )
+    .await?;
+    Ok(built.registry)
+}
+
 /// Everything built from the settings, ready to hand out agents.
 ///
 /// The provider, the tools and their connection pools are shared (`Arc`), so a
@@ -46,12 +65,7 @@ impl App {
         let provider = build_provider(&settings.llm, &get_key)?;
         let provider_health: Arc<dyn HealthCheck> = provider.clone();
         check_provider(&provider_health, settings.startup.health_check_timeout()).await?;
-        let built = build_tools(settings, &get_key)?;
-        check_services(
-            &built.health_checks,
-            settings.startup.health_check_timeout(),
-        )
-        .await?;
+        let tools = build_checked_tools(settings, &get_key).await?;
 
         let prices = settings.price_table();
         if prices.price(provider.model()).is_none() {
@@ -64,7 +78,7 @@ impl App {
 
         Ok(Self {
             provider,
-            tools: Arc::new(built.registry),
+            tools: Arc::new(tools),
             agent_config: AgentConfig {
                 system_prompt: settings.agent.system_prompt.clone(),
                 max_tokens: settings.agent.max_tokens,

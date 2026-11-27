@@ -8,4 +8,4 @@ pub mod providers;
 pub mod startup;
 pub mod tools;
 
-pub use app::{App, AppError};
+pub use app::{App, AppError, build_checked_tools};

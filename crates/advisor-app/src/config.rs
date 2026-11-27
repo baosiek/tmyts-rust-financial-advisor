@@ -83,6 +83,30 @@ pub struct Settings {
     pub pricing: Option<PricingSettings>,
     /// Settings of the evals runner (`bins/advisor-evals`). Only it needs them.
     pub evals: Option<EvalsSettings>,
+    /// Settings of the MCP server (`bins/advisor-mcp`). Only it needs them.
+    pub mcp: Option<McpSettings>,
+}
+
+/// `[mcp]`: the MCP server that serves the enabled tools to MCP clients.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpSettings {
+    /// Upper bound for one tool call; a slow call is reported to the client as a tool error.
+    pub tool_timeout_secs: u64,
+    /// How long clients may cache the tool list (`ttlMs` in modern MCP results).
+    pub cache_ttl_secs: u64,
+    /// Guidance for the client's model on how to use these tools.
+    pub instructions: String,
+}
+
+impl McpSettings {
+    pub fn tool_timeout(&self) -> Duration {
+        Duration::from_secs(self.tool_timeout_secs)
+    }
+
+    pub fn cache_ttl(&self) -> Duration {
+        Duration::from_secs(self.cache_ttl_secs)
+    }
 }
 
 /// Token prices, one table per model id: `[pricing.models."<model id>"]`.
@@ -531,6 +555,16 @@ mod tests {
             settings.evals.unwrap().case_timeout(),
             Duration::from_secs(300)
         );
+    }
+
+    #[test]
+    fn mcp_section_parses() {
+        let text = format!(
+            "{VALID}\n[mcp]\ntool_timeout_secs = 30\ncache_ttl_secs = 600\ninstructions = \"use them\"\n"
+        );
+        let mcp = parse(&text).unwrap().mcp.unwrap();
+        assert_eq!(mcp.tool_timeout(), Duration::from_secs(30));
+        assert_eq!(mcp.cache_ttl(), Duration::from_secs(600));
     }
 
     #[test]

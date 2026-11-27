@@ -141,6 +141,19 @@ dependencies = [
 [[package]]
 name = "advisor-mcp"
 version = "0.1.0"
+dependencies = [
+ "advisor-app",
+ "advisor-core",
+ "advisor-llm",
+ "advisor-observability",
+ "advisor-tools",
+ "async-trait",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "advisor-memory"
