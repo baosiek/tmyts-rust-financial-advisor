@@ -9,7 +9,7 @@ use crate::{CaseOutcome, CheckResult, EvalCase};
 pub fn run_checks(case: &EvalCase, outcome: &CaseOutcome, prices: &PriceTable) -> Vec<CheckResult> {
     let mut checks = Vec::new();
     let answer = outcome.answer.as_deref().unwrap_or("");
-    let answer_lower = answer.to_lowercase();
+    let answer_lower = normalize(answer);
     let called = outcome.trace.tool_names();
 
     checks.push(match &outcome.error {
@@ -69,7 +69,7 @@ pub fn run_checks(case: &EvalCase, outcome: &CaseOutcome, prices: &PriceTable) -
     for phrase in &case.must_contain {
         checks.push(CheckResult::new(
             format!("mentions \"{phrase}\""),
-            answer_lower.contains(&phrase.to_lowercase()),
+            answer_lower.contains(&normalize(phrase)),
             "",
         ));
     }
@@ -78,7 +78,7 @@ pub fn run_checks(case: &EvalCase, outcome: &CaseOutcome, prices: &PriceTable) -
         let found: Vec<&String> = case
             .must_contain_any
             .iter()
-            .filter(|phrase| answer_lower.contains(&phrase.to_lowercase()))
+            .filter(|phrase| answer_lower.contains(&normalize(phrase)))
             .collect();
         checks.push(CheckResult::new(
             format!("mentions one of {:?}", case.must_contain_any),
@@ -90,7 +90,7 @@ pub fn run_checks(case: &EvalCase, outcome: &CaseOutcome, prices: &PriceTable) -
     for phrase in &case.must_not_contain {
         checks.push(CheckResult::new(
             format!("does not say \"{phrase}\""),
-            !answer_lower.contains(&phrase.to_lowercase()),
+            !answer_lower.contains(&normalize(phrase)),
             "",
         ));
     }
@@ -127,6 +127,14 @@ pub fn run_checks(case: &EvalCase, outcome: &CaseOutcome, prices: &PriceTable) -
     }
 
     checks
+}
+
+/// Lowercase, with typographic quotes turned into plain ones. Models often write
+/// `couldn’t` (U+2019) where a case file says `couldn't`; that is the same word.
+fn normalize(text: &str) -> String {
+    text.to_lowercase()
+        .replace(['\u{2018}', '\u{2019}'], "'")
+        .replace(['\u{201C}', '\u{201D}'], "\"")
 }
 
 /// True when `actual` (a tool input) has every field of `expected` with an equal

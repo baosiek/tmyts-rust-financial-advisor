@@ -187,3 +187,15 @@ fn misspelled_rule_is_rejected() {
     let err = parse_cases(text, Path::new("test.toml")).unwrap_err();
     assert!(err.to_string().contains("must_contian"), "got: {err}");
 }
+
+#[test]
+fn typographic_apostrophes_match_plain_ones() {
+    let any = case(r#"must_contain_any = ["couldn't find"]"#);
+    assert!(failed(&any, &outcome("I couldn\u{2019}t find ZZZQX.", &[])).is_empty());
+
+    let forbidden = case(r#"must_not_contain = ["you shouldn't sell"]"#);
+    assert_eq!(
+        failed(&forbidden, &outcome("You shouldn\u{2019}t sell.", &[])).len(),
+        1
+    );
+}
