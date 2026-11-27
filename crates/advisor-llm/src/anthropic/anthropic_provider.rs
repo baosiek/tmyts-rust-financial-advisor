@@ -1,13 +1,14 @@
 use url::Url;
 
 use crate::anthropic::anthropic_config::AnthropicConfig;
+use crate::anthropic::wire::Models;
 use crate::types::{ChatRequest, ChatResponse};
 use crate::{
     anthropic::wire::MessageRequest, anthropic::wire::MessageResponse, llm_error::LlmError,
     llm_provider::LlmProvider,
 };
-
-use advisor_core::Secret;
+use advisor_core::{HealthCheck, HealthError, Secret};
+use async_trait::async_trait;
 use reqwest::{Client, StatusCode};
 
 #[derive(Clone, Debug)]
@@ -17,6 +18,7 @@ pub struct AnthropicProvider {
     api_key: Secret,
     version: String,
     api_url: Url,
+    models_url: Url,
     client: reqwest::Client,
 }
 
@@ -30,6 +32,7 @@ impl AnthropicProvider {
         Ok(Self {
             name: "Anthropic".to_string(),
             model: config.model,
+            models_url: config.models_url,
             api_key: config.api_key,
             version: config.version,
             api_url: config.url,
@@ -87,5 +90,50 @@ impl LlmProvider for AnthropicProvider {
             .await
             .map_err(|e| LlmError::Parse(e.to_string()))?;
         Ok(ChatResponse::from(parsed))
+    }
+}
+
+#[async_trait]
+impl HealthCheck for AnthropicProvider {
+    fn service_name(&self) -> &'static str {
+        "anthropic_provider"
+    }
+
+    async fn check(&self) -> Result<String, HealthError> {
+        let resp = self
+            .client
+            .get(self.models_url.clone())
+            .header("x-api-key", self.api_key.expose())
+            .header("anthropic-version", &self.version)
+            .send()
+            .await
+            .map_err(|e| LlmError::Network(e.to_string()))?;
+
+        let status = resp.status();
+
+        let body = resp.text().await.unwrap_or_default();
+
+        if status.is_success() {
+            let models: Models = serde_json::from_str(&body)?;
+            check_for_model(&models, &self.model)?;
+            return Ok(format!("{} reachable", self.model));
+        }
+
+        let err = match status {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => LlmError::Auth(body),
+            s => LlmError::Api {
+                status: s.as_u16(),
+                message: body,
+            },
+        };
+        Err(err.into())
+    }
+}
+
+fn check_for_model(models: &Models, model_to_be_used: &str) -> Result<(), LlmError> {
+    if models.data.iter().any(|m| m.id == model_to_be_used) {
+        Ok(())
+    } else {
+        Err(LlmError::ModelNotFound(model_to_be_used.to_string()))
     }
 }

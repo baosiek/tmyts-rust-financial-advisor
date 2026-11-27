@@ -18,6 +18,7 @@ call_timeout_secs = 180
 
 [llm.anthropic]
 url = "https://api.anthropic.com/v1/messages"
+models_url = "https://api.anthropic.com/v1/models"
 version = "2023-06-01"
 model = "claude-sonnet-5-5"
 timeout_secs = 120

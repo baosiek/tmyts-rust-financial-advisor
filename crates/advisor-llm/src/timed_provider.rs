@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use advisor_core::{TimedError, timed};
+use advisor_core::{HealthCheck, HealthError, TimedError, timed};
 
 use crate::types::{ChatRequest, ChatResponse};
 use crate::{LlmError, LlmProvider};
@@ -66,5 +66,18 @@ impl LlmProvider for TimedProvider {
                 Err(LlmError::Timeout { after_ms })
             }
         }
+    }
+}
+
+/// Delegates to the wrapped provider: the decorator adds timing to `complete`,
+/// and a health check should test the real service, not the decorator.
+#[async_trait::async_trait]
+impl HealthCheck for TimedProvider {
+    fn service_name(&self) -> &'static str {
+        self.inner.service_name()
+    }
+
+    async fn check(&self) -> Result<String, HealthError> {
+        self.inner.check().await
     }
 }

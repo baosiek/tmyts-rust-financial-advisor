@@ -19,12 +19,18 @@ pub enum LlmError {
 
     #[error("no response within {after_ms} ms")]
     Timeout { after_ms: u64 },
+
+    #[error("model `{0}` is not available to this API key")]
+    ModelNotFound(String),
 }
 
 impl LlmError {
     pub fn is_retryable(&self) -> bool {
         match self {
-            LlmError::RateLimited { .. } | LlmError::Network(_) | LlmError::Timeout { .. } => true,
+            LlmError::RateLimited { .. }
+            | LlmError::Network(_)
+            | LlmError::Timeout { .. }
+            | LlmError::ModelNotFound(_) => true,
             LlmError::Api { status, .. } => matches!(status, 408 | 500 | 502..=504 | 529),
             LlmError::Auth(_) | LlmError::Parse(_) => false,
         }

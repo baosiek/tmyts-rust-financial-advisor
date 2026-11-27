@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use advisor_agent::{Agent, AgentConfig};
+use advisor_core::{HealthCheck, HealthError};
 use advisor_evals::{EvalCase, Report, run_cases};
 use advisor_llm::pricing::{ModelPrice, PriceTable};
 use advisor_llm::types::{ChatRequest, ChatResponse, ContentBlock, StopReason, Usage};
@@ -19,6 +20,17 @@ use serde_json::json;
 /// Shared by all agents of a run, so the script continues from case to case.
 struct ScriptedProvider {
     responses: Mutex<VecDeque<ChatResponse>>,
+}
+
+#[async_trait]
+impl HealthCheck for ScriptedProvider {
+    fn service_name(&self) -> &'static str {
+        "scripted"
+    }
+
+    async fn check(&self) -> Result<String, HealthError> {
+        Ok("ok".to_string())
+    }
 }
 
 #[async_trait]

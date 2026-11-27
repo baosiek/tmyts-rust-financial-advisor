@@ -53,6 +53,7 @@ where
                 model: settings.model.clone(),
                 version: settings.version.clone(),
                 url: settings.url.clone(),
+                models_url: settings.models_url.clone(),
                 timeout: settings.timeout(),
             })?;
 
@@ -88,6 +89,7 @@ mod tests {
             call_timeout_secs: 180,
             anthropic: Some(AnthropicSettings {
                 url: "https://api.anthropic.com/v1/messages".parse().unwrap(),
+                models_url: "https://api.anthropic.com/v1/models".parse().unwrap(),
                 version: "2023-06-01".to_string(),
                 model: "test-model".to_string(),
                 timeout_secs: 5,

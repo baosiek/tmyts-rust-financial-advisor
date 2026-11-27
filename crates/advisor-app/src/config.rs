@@ -227,6 +227,7 @@ pub enum ProviderKind {
 #[serde(deny_unknown_fields)]
 pub struct AnthropicSettings {
     pub url: Url,
+    pub models_url: Url,
     pub version: String,
     pub model: String,
     pub timeout_secs: u64,
@@ -342,6 +343,7 @@ mod tests {
 
         [llm.anthropic]
         url = "https://api.anthropic.com/v1/messages"
+        models_url = "https://api.anthropic.com/v1/models"
         version = "2023-06-01"
         model = "m"
         timeout_secs = 120

@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use advisor_agent::{Agent, AgentConfig, AgentError};
+use advisor_core::{HealthCheck, HealthError};
 use advisor_llm::pricing::{ModelPrice, PriceTable};
 use advisor_llm::types::{ChatRequest, ChatResponse, ContentBlock, Role, StopReason, Usage};
 use advisor_llm::{LlmError, LlmProvider};
@@ -25,6 +26,17 @@ impl ScriptedProvider {
             responses: Mutex::new(responses.into()),
             requests: Mutex::new(Vec::new()),
         })
+    }
+}
+
+#[async_trait]
+impl HealthCheck for ScriptedProvider {
+    fn service_name(&self) -> &'static str {
+        "scripted"
+    }
+
+    async fn check(&self) -> Result<String, HealthError> {
+        Ok("ok".to_string())
     }
 }
 

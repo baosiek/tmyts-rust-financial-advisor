@@ -10,4 +10,6 @@ pub struct AnthropicConfig {
     pub url: Url,
     /// Upper bound for one HTTP request, including reading the response.
     pub timeout: Duration,
+    /// Full endpoint to the model url: https://api.anthropic.com/v1/models
+    pub models_url: Url,
 }

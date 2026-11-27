@@ -31,6 +31,14 @@ pub async fn check_services(
     report(&results)
 }
 
+pub async fn check_provider(
+    check: &Arc<dyn HealthCheck>,
+    limit: Duration,
+) -> Result<(), StartupError> {
+    let result = timed(check.service_name(), limit, check.check()).await;
+    report(&[result])
+}
+
 fn report(results: &[Pending<String, advisor_core::HealthError>]) -> Result<(), StartupError> {
     // Log every result first, so all failures are visible before aborting.
     for pending in results {

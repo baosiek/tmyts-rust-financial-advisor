@@ -11,6 +11,7 @@ fn provider_for(server: &MockServer) -> AnthropicProvider {
     let config = AnthropicConfig {
         api_key: Secret::new("test-key"),
         model: "test-model".to_string(),
+        models_url: Url::parse(&format!("{}/v1/models", server.uri())).expect("valid URL"),
         version: "2023-06-01".to_string(),
         url: Url::parse(&format!("{}/v1/messages", server.uri())).expect("valid URL"),
         timeout: std::time::Duration::from_secs(5),

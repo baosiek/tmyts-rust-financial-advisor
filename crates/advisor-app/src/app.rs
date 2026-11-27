@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use advisor_agent::{Agent, AgentConfig};
+use advisor_core::HealthCheck;
 use advisor_llm::LlmProvider;
 use advisor_llm::pricing::PriceTable;
 use advisor_tools::ToolRegistry;
@@ -8,7 +9,7 @@ use thiserror::Error;
 
 use crate::config::{ConfigError, Settings};
 use crate::providers::{BuildProviderError, build_provider};
-use crate::startup::{StartupError, check_services};
+use crate::startup::{StartupError, check_provider, check_services};
 use crate::tools::build_tools;
 
 #[derive(Debug, Error)]
@@ -43,6 +44,8 @@ impl App {
         F: Fn(&str) -> Option<String>,
     {
         let provider = build_provider(&settings.llm, &get_key)?;
+        let provider_health: Arc<dyn HealthCheck> = provider.clone();
+        check_provider(&provider_health, settings.startup.health_check_timeout()).await?;
         let built = build_tools(settings, &get_key)?;
         check_services(
             &built.health_checks,

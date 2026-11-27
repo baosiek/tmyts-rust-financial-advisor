@@ -3,12 +3,24 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use advisor_core::{HealthCheck, HealthError};
 use advisor_llm::types::{ChatRequest, ChatResponse, ContentBlock, StopReason, Usage};
 use advisor_llm::{LlmError, LlmProvider, TimedProvider};
 
 struct SlowProvider {
     delay: Duration,
     fail: bool,
+}
+
+#[async_trait::async_trait]
+impl HealthCheck for SlowProvider {
+    fn service_name(&self) -> &'static str {
+        "slow"
+    }
+
+    async fn check(&self) -> Result<String, HealthError> {
+        Ok("ok".to_string())
+    }
 }
 
 #[async_trait::async_trait]
