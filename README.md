@@ -29,7 +29,8 @@ It is the research part of a larger platform:
 | Eval suite with rule-based checks and reports | Done |
 | Portfolio tools (holdings, risk metrics) | Planned |
 | Axum API with SSE streaming for Angular | Planned |
-| Retries, rate limiting, Prometheus metrics | Planned |
+| Retries with exponential backoff and jitter | Done |
+| Rate limiting, Prometheus metrics | Planned |
 | Docker image, K3d deployment | Planned |
 
 ## How a question is answered
@@ -65,7 +66,7 @@ crates/advisor-app        composition root: settings, factories, startup checks
 crates/advisor-agent      tool-calling loop, conversation history, run trace
         |
 crates/advisor-tools      typed tools + registry: current_date, get_price_history, search_news
-crates/advisor-llm        LlmProvider trait, Anthropic + OpenAI providers, TimedProvider, pricing
+crates/advisor-llm        LlmProvider trait, Anthropic + OpenAI providers, Timed/Retrying decorators, pricing
         |
 crates/advisor-market-data   PriceRepository (Postgres, sqlx)
 crates/advisor-news-rag      NewsRepository (Qdrant)
@@ -88,7 +89,7 @@ Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-in
 - **The content decides, not the label.** The agent runs tools when the reply contains tool calls, whatever stop reason the provider reported, and never runs tools from a reply cut off by `max_tokens`.
 - **Errors carry the retry decision.** Each `LlmError` says whether retrying can help. A missing model or an empty account (which OpenAI reports as HTTP 429, like a rate limit) is not retryable.
 - **Typed tools.** A tool declares a Rust input struct; its JSON schema (including doc comments as descriptions) is generated with `schemars`, and the model's input is validated against it before the tool runs.
-- **Decorators for cross-cutting concerns.** `TimedProvider` wraps any provider to time, limit and log every call; retries and rate limiting will be added the same way.
+- **Decorators for cross-cutting concerns.** Every provider is wrapped as `TimedProvider(RetryingProvider(provider))`. `RetryingProvider` retries temporary failures with exponential backoff and jitter, waits as long as a rate limit asks (or gives up if that exceeds the configured maximum), and never retries permanent errors. `TimedProvider` sits outside, so one time limit covers all attempts together. Both work with any provider; rate limiting will be added the same way.
 - **Fail fast at startup.** Every service a tool depends on is health-checked in parallel before the agent starts, including a check that the embedding size matches the Qdrant collection.
 - **Untrusted text is screened.** News is written by third parties and goes straight into the model's context, which makes it a channel for indirect prompt injection. Every title and excerpt passes through `advisor-warden`: weighted pattern rules (instruction overrides, role manipulation, exfiltration attempts, fake conversation markers, hidden Unicode) produce a score; suspicious text is cleaned and flagged, likely attacks are withheld, and every detection is logged. The rules are tested against ordinary financial language to keep false positives out. It is one layer, not a guarantee: tools are also read-only and the model is told to treat news as information, never as instructions.
 - **Least privilege.** The advisor reads the trading database with a read-only user (`sql/advisor_readonly_user.sql`). Secrets are wrapped in a `Secret` type that never prints its value and is zeroed on drop.

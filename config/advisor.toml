@@ -13,8 +13,20 @@ filter = "info"
 # Which provider the agent uses. Switching is a config change: edit this line and restart.
 provider = "openai"
 # Upper bound for one whole LLM call (TimedProvider). Keep it above the
-# provider's own HTTP timeout below, so retries added later still fit.
+# provider's own HTTP timeout below; retries (below) run inside this limit.
 call_timeout_secs = 180
+
+[llm.retry]
+# Retries of temporary failures (rate limits, overload, network errors) with
+# exponential backoff: waits of initial, ×multiplier, ×multiplier², … capped at
+# max_backoff, minus a random share (jitter) so clients do not retry in lockstep.
+# Auth errors, unknown models and an empty account are never retried.
+# All attempts together must fit in call_timeout_secs above.
+max_attempts = 3            # tries in total; 1 switches retries off
+initial_backoff_ms = 1000
+max_backoff_ms = 20000      # a rate limit asking for longer than this is not waited for
+multiplier = 2.0
+jitter = 0.5
 
 [llm.anthropic]
 url = "https://api.anthropic.com/v1/messages"

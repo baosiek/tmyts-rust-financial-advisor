@@ -178,6 +178,12 @@ mod tests {
             [llm]
             provider = "anthropic"
             call_timeout_secs = 1
+            [llm.retry]
+            max_attempts = 1
+            initial_backoff_ms = 1
+            max_backoff_ms = 1
+            multiplier = 1.0
+            jitter = 0.0
             [agent]
             max_tokens = 1
             max_tool_rounds = 1

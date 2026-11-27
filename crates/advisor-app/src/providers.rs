@@ -5,7 +5,7 @@ use crate::config::{ConfigError, LlmSettings, ProviderKind, required};
 use advisor_core::Secret;
 use advisor_llm::{
     AnthropicConfig, AnthropicProvider, LlmError, LlmProvider, OpenaiConfig, OpenaiProvider,
-    TimedProvider,
+    RetryingProvider, TimedProvider,
 };
 
 #[derive(Debug, Error)]
@@ -18,8 +18,13 @@ pub enum BuildProviderError {
 }
 
 /// Builds the provider selected in the settings and wraps it in the decorators
-/// every call goes through (today: timing and logging). Secrets are read through
-/// `get_key`, and only the selected provider's secret is required.
+/// every call goes through:
+///
+/// `TimedProvider( RetryingProvider( provider ) )`
+///
+/// Retrying sits inside, so the time limit covers all attempts of one call
+/// together, and the timing log shows what the agent actually waited. Secrets
+/// are read through `get_key`, and only the selected provider's secret is required.
 pub fn build_provider<F>(
     llm: &LlmSettings,
     get_key: F,
@@ -27,8 +32,10 @@ pub fn build_provider<F>(
 where
     F: Fn(&str) -> Option<String>,
 {
+    let policy = llm.retry.policy()?;
     let provider = build_concrete_provider(llm, get_key)?;
-    Ok(Arc::new(TimedProvider::new(provider, llm.call_timeout())))
+    let retrying: Arc<dyn LlmProvider> = Arc::new(RetryingProvider::new(provider, policy));
+    Ok(Arc::new(TimedProvider::new(retrying, llm.call_timeout())))
 }
 
 /// Builds the bare provider selected in the settings, without decorators.
@@ -109,13 +116,24 @@ fn validate_api_key(name: &'static str, api_key: &str, prefix: &str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AnthropicSettings, OpenaiSettings};
+    use crate::config::{AnthropicSettings, OpenaiSettings, RetrySettings};
+
+    fn retry() -> RetrySettings {
+        RetrySettings {
+            max_attempts: 3,
+            initial_backoff_ms: 500,
+            max_backoff_ms: 8000,
+            multiplier: 2.0,
+            jitter: 0.5,
+        }
+    }
     use std::collections::HashMap;
 
     fn anthropic_settings() -> LlmSettings {
         LlmSettings {
             provider: ProviderKind::Anthropic,
             call_timeout_secs: 180,
+            retry: retry(),
             anthropic: Some(AnthropicSettings {
                 url: "https://api.anthropic.com/v1/messages".parse().unwrap(),
                 models_url: "https://api.anthropic.com/v1/models".parse().unwrap(),
@@ -131,6 +149,7 @@ mod tests {
         LlmSettings {
             provider: ProviderKind::Openai,
             call_timeout_secs: 180,
+            retry: retry(),
             anthropic: None,
             openai: Some(OpenaiSettings {
                 responses_url: "https://api.openai.com/v1/responses".parse().unwrap(),
@@ -237,6 +256,22 @@ mod tests {
             err,
             BuildProviderError::Config(ConfigError::Invalid {
                 name: "OPENAI_API_KEY",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn invalid_retry_settings_stop_the_build() {
+        let mut settings = anthropic_settings();
+        settings.retry.jitter = 2.0;
+        let err = build_provider(&settings, env(&[("ANTHROPIC_API_KEY", "sk-ant-test")]))
+            .err()
+            .unwrap();
+        assert!(matches!(
+            err,
+            BuildProviderError::Config(ConfigError::InvalidSetting {
+                setting: "llm.retry",
                 ..
             })
         ));

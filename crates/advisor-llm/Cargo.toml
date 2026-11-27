@@ -12,9 +12,11 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+# test-util: paused time, so retry tests do not really sleep.
+tokio = { workspace = true, features = ["test-util"] }
 wiremock.workspace = true

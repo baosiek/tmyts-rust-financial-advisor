@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use advisor_llm::RetryPolicy;
 use advisor_llm::pricing::{ModelPrice, PriceTable};
 use serde::Deserialize;
 use thiserror::Error;
@@ -44,6 +45,12 @@ pub enum ConfigError {
     #[error("could not create the {service} client: {reason}")]
     Service {
         service: &'static str,
+        reason: String,
+    },
+
+    #[error("invalid setting `{setting}`: {reason}")]
+    InvalidSetting {
+        setting: &'static str,
         reason: String,
     },
 
@@ -207,6 +214,8 @@ pub struct LlmSettings {
     pub provider: ProviderKind,
     /// Upper bound for one whole LLM call, measured by `TimedProvider`.
     pub call_timeout_secs: u64,
+    /// Retries of failed calls; applies to whichever provider is selected.
+    pub retry: RetrySettings,
     pub anthropic: Option<AnthropicSettings>,
     pub openai: Option<OpenaiSettings>,
 }
@@ -214,6 +223,36 @@ pub struct LlmSettings {
 impl LlmSettings {
     pub fn call_timeout(&self) -> Duration {
         Duration::from_secs(self.call_timeout_secs)
+    }
+}
+
+/// `[llm.retry]`: exponential backoff for temporary failures.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetrySettings {
+    /// Tries in total, the first one included. 1 switches retries off.
+    pub max_attempts: u32,
+    pub initial_backoff_ms: u64,
+    pub max_backoff_ms: u64,
+    pub multiplier: f64,
+    /// Share of each wait that is random, 0.0 to 1.0.
+    pub jitter: f64,
+}
+
+impl RetrySettings {
+    /// The validated policy; invalid numbers are reported with the setting's name.
+    pub fn policy(&self) -> Result<RetryPolicy, ConfigError> {
+        RetryPolicy::new(
+            self.max_attempts,
+            Duration::from_millis(self.initial_backoff_ms),
+            Duration::from_millis(self.max_backoff_ms),
+            self.multiplier,
+            self.jitter,
+        )
+        .map_err(|e| ConfigError::InvalidSetting {
+            setting: "llm.retry",
+            reason: e.to_string(),
+        })
     }
 }
 
@@ -362,6 +401,13 @@ mod tests {
         provider = "anthropic"
         call_timeout_secs = 180
 
+        [llm.retry]
+        max_attempts = 3
+        initial_backoff_ms = 500
+        max_backoff_ms = 8000
+        multiplier = 2.0
+        jitter = 0.5
+
         [llm.anthropic]
         url = "https://api.anthropic.com/v1/messages"
         models_url = "https://api.anthropic.com/v1/models"
@@ -415,6 +461,18 @@ mod tests {
         let openai = settings.llm.openai.unwrap();
         assert!(openai.replay_reasoning);
         assert_eq!(openai.timeout(), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn retry_settings_become_a_policy() {
+        let settings = parse(VALID).unwrap();
+        let policy = settings.llm.retry.policy().unwrap();
+        assert_eq!(policy.max_attempts(), 3);
+        assert_eq!(policy.backoff(2), Duration::from_millis(1000));
+
+        let text = VALID.replace("max_attempts = 3", "max_attempts = 0");
+        let err = parse(&text).unwrap().llm.retry.policy().unwrap_err();
+        assert!(err.to_string().contains("llm.retry"), "got: {err}");
     }
 
     #[test]
