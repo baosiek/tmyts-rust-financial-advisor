@@ -1,11 +1,14 @@
-use super::{ContentBlock, WireUsage};
+use super::WireUsage;
+use super::content_block::from_wire;
 use crate::types::{ChatResponse, StopReason, Usage};
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct MessageResponse {
     pub model: String,
-    pub content: Vec<ContentBlock>,
+    /// Raw blocks: thinking blocks must be kept byte for byte (they are signed).
+    pub content: Vec<Value>,
     pub stop_reason: Option<String>,
     pub usage: WireUsage, // <- this is where the tokens come from
 }
@@ -13,13 +16,9 @@ pub(crate) struct MessageResponse {
 impl From<MessageResponse> for ChatResponse {
     fn from(r: MessageResponse) -> Self {
         let received = r.content.len();
-        let content: Vec<_> = r
-            .content
-            .into_iter()
-            .filter_map(ContentBlock::into_neutral)
-            .collect();
+        let content: Vec<_> = r.content.into_iter().filter_map(from_wire).collect();
         if content.len() < received {
-            // e.g. "thinking" blocks: not an error, but worth seeing when an answer looks empty.
+            // e.g. server tool blocks: not an error, but worth seeing when an answer looks empty.
             tracing::debug!(
                 dropped = received - content.len(),
                 "dropped content blocks of types this code does not handle"
@@ -46,6 +45,7 @@ fn stop_reason_from_api(reason: Option<&str>) -> StopReason {
         Some("tool_use") => StopReason::ToolUse,
         Some("max_tokens") => StopReason::MaxTokens,
         Some("stop_sequence") => StopReason::StopSequence,
+        Some("refusal") => StopReason::Refused,
         Some(other) => StopReason::Other(other.to_string()),
         None => StopReason::Other("missing".to_string()),
     }
@@ -75,9 +75,13 @@ mod tests {
 
         assert_eq!(resp.stop_reason, StopReason::ToolUse);
         assert_eq!(resp.text(), "Let me check.");
-        assert_eq!(resp.content.len(), 2, "unknown block types are dropped");
+        assert_eq!(resp.content.len(), 3, "thinking is kept as provider state");
         assert!(
             matches!(&resp.content[1], Neutral::ToolUse { name, .. } if name == "current_date")
+        );
+        assert!(
+            matches!(&resp.content[2], Neutral::ProviderState { provider, data }
+                if provider == "anthropic" && data["thinking"] == "...")
         );
         assert_eq!(resp.tool_calls()[0].id, "toolu_1");
     }

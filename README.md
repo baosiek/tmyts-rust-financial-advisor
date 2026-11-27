@@ -18,6 +18,8 @@ It is the research part of a larger platform:
 | Capability | State |
 |---|---|
 | Anthropic provider, timeouts, typed errors | Done |
+| OpenAI provider (Responses API), switchable in config | Done |
+| Provider health check: valid key and configured model exists | Done |
 | Tool-calling agent loop | Done |
 | `get_price_history` (Postgres) | Done |
 | `search_news` (Qdrant + embeddings) | Done |
@@ -63,7 +65,7 @@ crates/advisor-app        composition root: settings, factories, startup checks
 crates/advisor-agent      tool-calling loop, conversation history, run trace
         |
 crates/advisor-tools      typed tools + registry: current_date, get_price_history, search_news
-crates/advisor-llm        LlmProvider trait, Anthropic provider, TimedProvider, pricing
+crates/advisor-llm        LlmProvider trait, Anthropic + OpenAI providers, TimedProvider, pricing
         |
 crates/advisor-market-data   PriceRepository (Postgres, sqlx)
 crates/advisor-news-rag      NewsRepository (Qdrant)
@@ -81,7 +83,10 @@ Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-in
 - **No agent framework.** The provider client and agent loop are about a few hundred lines; writing them keeps prompts, retries, costs and failure handling visible.
 - **Dependency injection everywhere.** The agent receives an `Arc<dyn LlmProvider>` and a `ToolRegistry`; tools receive `Arc<dyn PriceRepository>`, `Arc<dyn NewsRepository>` and `Arc<dyn Embedder>`. Only the composition root (`crates/advisor-app`, shared by every binary) names concrete types, so tests inject in-memory fakes and need no network or database.
 - **Configuration, not code, selects behaviour.** The LLM provider (`[llm] provider`) and the enabled tools (`[tools] enabled`) come from the settings file. Unknown names are rejected when the file is read.
-- **Wire types separate from domain types.** Anthropic's JSON shapes live in private `wire` modules and convert to provider-neutral types (`ChatRequest`, `ChatResponse`, `ContentBlock`), so an API change stays inside one module and a second provider needs no changes elsewhere.
+- **Wire types separate from domain types.** Each provider's JSON shapes live in a private `wire` module and convert to provider-neutral types (`ChatRequest`, `ChatResponse`, `ContentBlock`). Anthropic and the OpenAI Responses API differ a lot (messages with blocks vs. a flat list of typed items, a `stop_reason` field vs. one derived from `status` and the output, cached tokens counted in or out of the input), and all of it stays inside the adapters: the agent and tools are the same for both.
+- **Provider state is carried, not interpreted.** What a provider needs back in the next request (OpenAI reasoning items, Anthropic thinking blocks) is kept as an opaque `ContentBlock::ProviderState`. Only the provider that produced it sends it back, so a conversation stays valid when the provider is switched.
+- **The content decides, not the label.** The agent runs tools when the reply contains tool calls, whatever stop reason the provider reported, and never runs tools from a reply cut off by `max_tokens`.
+- **Errors carry the retry decision.** Each `LlmError` says whether retrying can help. A missing model or an empty account (which OpenAI reports as HTTP 429, like a rate limit) is not retryable.
 - **Typed tools.** A tool declares a Rust input struct; its JSON schema (including doc comments as descriptions) is generated with `schemars`, and the model's input is validated against it before the tool runs.
 - **Decorators for cross-cutting concerns.** `TimedProvider` wraps any provider to time, limit and log every call; retries and rate limiting will be added the same way.
 - **Fail fast at startup.** Every service a tool depends on is health-checked in parallel before the agent starts, including a check that the embedding size matches the Qdrant collection.
@@ -97,7 +102,7 @@ Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-in
 - Postgres with the trading app's `assets` and `assets_price_history` tables
 - Qdrant with the news collection (384-dimension vectors, cosine distance)
 - The embedding service that produced those vectors
-- An Anthropic API key (from the Claude Console; billed separately from a claude.ai plan)
+- An API key for the selected provider: Anthropic (from the Claude Console; billed separately from a claude.ai plan) or OpenAI
 
 ## Setup
 
@@ -108,7 +113,8 @@ Planned crates (`advisor-memory`, `advisor-portfolio`) and binaries (`advisor-in
    ```
 2. Copy `.env.example` to `.env` and fill in the secrets:
    ```
-   ANTHROPIC_API_KEY=sk-ant-...
+   ANTHROPIC_API_KEY=sk-ant-...   # with provider = "anthropic"
+   OPENAI_API_KEY=sk-...          # with provider = "openai"
    ADVISOR_CONFIG=config/advisor.toml
    POSTGRES_PASSWORD=...
    QDRANT_API_KEY=...        # only if Qdrant uses one

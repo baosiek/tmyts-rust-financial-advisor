@@ -11,19 +11,31 @@ filter = "info"
 
 [llm]
 # Which provider the agent uses. Switching is a config change: edit this line and restart.
-provider = "anthropic"
+provider = "openai"
 # Upper bound for one whole LLM call (TimedProvider). Keep it above the
 # provider's own HTTP timeout below, so retries added later still fit.
 call_timeout_secs = 180
 
 [llm.anthropic]
 url = "https://api.anthropic.com/v1/messages"
+# The startup health check asks for {models_url}/{model}: key valid and model exists.
 models_url = "https://api.anthropic.com/v1/models"
 version = "2023-06-01"
 model = "claude-sonnet-5-5"
 timeout_secs = 120
 
-# [llm.openai]   <- added once an OpenAiProvider exists
+[llm.openai]
+# OpenAI Responses API. The key comes from OPENAI_API_KEY in .env.
+# Other OpenAI-compatible Responses APIs (e.g. xAI) only need other URLs and model.
+responses_url = "https://api.openai.com/v1/responses"
+# The startup health check asks for {models_url}/{model}: key valid and model exists.
+models_url = "https://api.openai.com/v1/models"
+model = "gpt-6-luna"
+timeout_secs = 120
+# Send reasoning items back with the next request (as encrypted content, since
+# nothing is stored at OpenAI: requests use store = false). Helps reasoning
+# models keep their reasoning across tool calls; costs some input tokens.
+replay_reasoning = true
 
 [agent]
 max_tokens = 4096
@@ -85,13 +97,21 @@ block_at = 0.7
 # Prices change: check https://platform.claude.com/docs/en/about-claude/pricing
 # (these were taken from it in November 2026). A model without an entry still
 # works, but its cost is reported as "unknown", and evals with max_cost_usd fail.
-# The model id must match [llm.anthropic] model (a longer dated id also matches).
+# The model id must match the selected provider's model (a longer dated id also matches).
 [pricing.models."claude-sonnet-5-5"]
 input_per_mtok = 2.0
 output_per_mtok = 10.0
 # 5-minute cache writes; cache hits are a fraction of normal input.
 cache_write_per_mtok = 2.5
 cache_read_per_mtok = 0.10
+
+[pricing.models."gpt-6-luna"]
+# From https://developers.openai.com/api/docs/pricing (November 2026).
+input_per_mtok = 0.10
+output_per_mtok = 0.50
+# OpenAI bills no cache writes (the adapter reports 0 of them); the value is unused.
+cache_write_per_mtok = 0.10
+cache_read_per_mtok = 0.01
 
 [pricing.models."claude-haiku-5-5"]
 input_per_mtok = 0.10

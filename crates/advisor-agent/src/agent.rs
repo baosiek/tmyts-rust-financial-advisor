@@ -80,20 +80,24 @@ impl Agent {
             self.history
                 .push(Message::assistant_blocks(response.content.clone()));
 
-            match response.stop_reason {
-                StopReason::ToolUse => {}
-                // A cut-off answer is incomplete (and may be empty, e.g. when the cut
-                // happened inside a tool call). Never present it as the final answer.
-                StopReason::MaxTokens => {
-                    return Err(AgentError::MaxTokensReached {
-                        max_tokens: self.config.max_tokens,
-                    });
-                }
-                _ => return Ok(response.text()),
+            // A cut-off reply is incomplete, even if it contains tool calls: their
+            // arguments may be cut off too. Never run them or present the text.
+            if response.stop_reason == StopReason::MaxTokens {
+                return Err(AgentError::MaxTokensReached {
+                    max_tokens: self.config.max_tokens,
+                });
+            }
+
+            // Tool calls in the content decide, not the stop reason: providers
+            // report that differently (OpenAI has none, Gemini says STOP even
+            // when it calls functions). No tool calls means this is the answer.
+            let calls = response.tool_calls();
+            if calls.is_empty() {
+                return Ok(response.text());
             }
 
             let mut results = Vec::new();
-            for call in response.tool_calls() {
+            for call in calls {
                 let input = call.input.clone();
                 let (content, is_error) = match self.tools.call(&call.name, call.input).await {
                     Ok(output) => (output, false),

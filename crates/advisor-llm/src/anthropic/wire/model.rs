@@ -1,14 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Models {
-    pub data: Vec<Model>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Model {
-    #[serde(rename = "type")]
-    pub item_type: String,
+/// `GET /v1/models/{model_id}`: the one model the health check asks about.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ModelInfo {
     pub id: String,
-    pub display_name: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
 }

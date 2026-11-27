@@ -2,11 +2,17 @@ use serde_json::Value;
 
 use super::{ContentBlock, StopReason};
 
-/// Tokens of one call, as counted (and billed) by the provider.
+/// Tokens of one call, normalised so that every provider means the same thing
+/// (cost tracking depends on it):
 ///
-/// With prompt caching, the provider splits the input in three: tokens written
-/// to the cache, tokens read from it, and the rest (`input_tokens`). They have
-/// different prices, so they are kept apart.
+/// - `input_tokens`: input tokens billed at the normal rate, i.e. **without**
+///   cache reads and cache writes. (OpenAI and Gemini count cached tokens inside
+///   their input total; their adapters subtract them.)
+/// - `cache_creation_input_tokens`: input written to the prompt cache (0 for
+///   providers that do not bill cache writes).
+/// - `cache_read_input_tokens`: input read from the prompt cache.
+/// - `output_tokens`: **everything billed as output**, reasoning included.
+///   (Gemini reports thinking tokens separately; its adapter adds them.)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     pub input_tokens: u32,

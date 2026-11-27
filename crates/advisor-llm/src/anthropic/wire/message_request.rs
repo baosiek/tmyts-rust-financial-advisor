@@ -23,7 +23,11 @@ impl MessageRequest {
                 .model
                 .clone()
                 .unwrap_or_else(|| default_model.to_string()),
-            messages: req.messages.iter().map(WireMessage::from).collect(),
+            messages: req
+                .messages
+                .iter()
+                .filter_map(WireMessage::from_neutral)
+                .collect(),
             max_tokens: req.max_tokens,
             system: req.system.clone(),
             temperature: req.temperature,
@@ -77,5 +81,38 @@ mod tests {
         let json =
             serde_json::to_value(MessageRequest::from_chat(&ChatRequest::new("Hi"), "m")).unwrap();
         assert!(json.get("tools").is_none());
+    }
+
+    #[test]
+    fn own_state_is_sent_back_and_other_providers_state_is_skipped() {
+        let mut req = ChatRequest::new("Hi");
+        req.messages.push(Message::assistant_blocks(vec![
+            ContentBlock::ProviderState {
+                provider: "anthropic".into(),
+                data: json!({ "type": "thinking", "thinking": "…", "signature": "sig" }),
+            },
+            ContentBlock::ProviderState {
+                provider: "openai".into(),
+                data: json!({ "type": "reasoning", "id": "rs_1" }),
+            },
+            ContentBlock::text("Hello"),
+        ]));
+        // A message holding only another provider's state is left out entirely.
+        req.messages.push(Message::assistant_blocks(vec![
+            ContentBlock::ProviderState {
+                provider: "openai".into(),
+                data: json!({}),
+            },
+        ]));
+
+        let json = serde_json::to_value(MessageRequest::from_chat(&req, "m")).unwrap();
+
+        let messages = json["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 2);
+        let blocks = messages[1]["content"].as_array().unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0]["type"], "thinking");
+        assert_eq!(blocks[0]["signature"], "sig");
+        assert_eq!(blocks[1]["type"], "text");
     }
 }

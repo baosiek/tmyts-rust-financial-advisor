@@ -296,3 +296,57 @@ async fn unpriced_model_gives_unknown_cost_not_zero() {
     let answer = agent.ask("Hi").await.unwrap();
     assert_eq!(answer.trace.cost_usd(&PriceTable::default()), None);
 }
+
+#[tokio::test]
+async fn tool_calls_run_even_when_the_stop_reason_does_not_say_so() {
+    // Gemini reports STOP with function calls; the content must decide.
+    let mut call = tool_call("toolu_1", "price", json!({ "ticker": "AAPL" })).unwrap();
+    call.stop_reason = StopReason::EndTurn;
+    let provider = ScriptedProvider::new(vec![Ok(call), answer("AAPL trades at 123.45.")]);
+    let mut agent = agent(provider.clone(), 5);
+
+    let answer = agent.ask("Price of AAPL?").await.unwrap();
+
+    assert_eq!(answer.text, "AAPL trades at 123.45.");
+    assert_eq!(answer.trace.tool_names(), vec!["price"]);
+    assert_eq!(provider.requests.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn cut_off_tool_call_is_not_run() {
+    let mut call = tool_call("toolu_1", "price", json!({ "ticker": "AA" })).unwrap();
+    call.stop_reason = StopReason::MaxTokens;
+    let provider = ScriptedProvider::new(vec![Ok(call)]);
+    let mut agent = agent(provider, 5);
+
+    let err = agent.ask("Price?").await.unwrap_err();
+
+    assert!(matches!(err, AgentError::MaxTokensReached { .. }));
+    assert!(
+        agent.last_trace().tool_calls.is_empty(),
+        "the tool was not run"
+    );
+}
+
+#[tokio::test]
+async fn provider_state_is_kept_in_the_history() {
+    let mut call = tool_call("toolu_1", "price", json!({ "ticker": "AAPL" })).unwrap();
+    call.content.insert(
+        0,
+        ContentBlock::ProviderState {
+            provider: "openai".into(),
+            data: json!({ "type": "reasoning", "encrypted_content": "e" }),
+        },
+    );
+    let provider = ScriptedProvider::new(vec![Ok(call), answer("Done.")]);
+    let mut agent = agent(provider.clone(), 5);
+
+    agent.ask("Price?").await.unwrap();
+
+    // The second request carries the state back, so the provider can replay it.
+    let requests = provider.requests.lock().unwrap();
+    assert!(matches!(
+        &requests[1].messages[1].content[0],
+        ContentBlock::ProviderState { provider, .. } if provider == "openai"
+    ));
+}

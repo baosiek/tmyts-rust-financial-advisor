@@ -1,4 +1,9 @@
-/// Why the model stopped writing.
+/// Why the model stopped writing, normalised across providers.
+///
+/// Providers report this differently: Anthropic has a `stop_reason` field, the
+/// OpenAI Responses API only a `status` plus the output items, Gemini a
+/// `finishReason`. Each adapter derives this value; the agent uses it to spot
+/// cut-off answers, and decides on tool calls by looking at the content itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopReason {
     /// The answer is complete.
@@ -9,6 +14,8 @@ pub enum StopReason {
     MaxTokens,
     /// A configured stop sequence was reached.
     StopSequence,
+    /// The provider declined or filtered the answer (refusal, content filter, safety).
+    Refused,
     /// A reason this code does not know yet; kept so nothing is lost.
     Other(String),
 }

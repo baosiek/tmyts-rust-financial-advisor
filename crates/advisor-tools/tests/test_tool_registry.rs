@@ -43,20 +43,32 @@ fn definitions_include_generated_schemas() {
     assert_eq!(add.description, "Adds two numbers.");
     assert_eq!(add.input_schema["type"], "object");
     assert_eq!(add.input_schema["properties"]["a"]["type"], "integer");
-    assert_eq!(add.input_schema["properties"]["a"]["description"], "First number.");
+    assert_eq!(
+        add.input_schema["properties"]["a"]["description"],
+        "First number."
+    );
     assert!(add.input_schema.get("$schema").is_none());
 }
 
 #[tokio::test]
 async fn call_dispatches_by_name() {
-    let result = registry().call("add", json!({ "a": 2, "b": 3 })).await.unwrap();
+    let result = registry()
+        .call("add", json!({ "a": 2, "b": 3 }))
+        .await
+        .unwrap();
     assert_eq!(result, "5");
 }
 
 #[tokio::test]
 async fn invalid_input_is_reported() {
-    let err = registry().call("add", json!({ "a": "two" })).await.unwrap_err();
-    assert!(matches!(err, ToolError::InvalidInput { ref tool, .. } if tool == "add"), "got {err:?}");
+    let err = registry()
+        .call("add", json!({ "a": "two" }))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ToolError::InvalidInput { ref tool, .. } if tool == "add"),
+        "got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -68,7 +80,10 @@ async fn unknown_tool_is_reported() {
 #[test]
 fn tool_without_input_still_has_properties() {
     let definitions = registry().definitions();
-    let date = definitions.iter().find(|d| d.name == "current_date").unwrap();
+    let date = definitions
+        .iter()
+        .find(|d| d.name == "current_date")
+        .unwrap();
     assert_eq!(date.input_schema["type"], "object");
     assert!(date.input_schema["properties"].is_object());
 }
@@ -79,4 +94,3 @@ async fn current_date_returns_todays_date() {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     assert!(result.starts_with(&today), "got {result}");
 }
-

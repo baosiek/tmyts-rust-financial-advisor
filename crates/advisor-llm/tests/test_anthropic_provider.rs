@@ -144,3 +144,56 @@ async fn malformed_response_becomes_parse_error() {
     );
     assert!(!err.is_retryable());
 }
+
+// ---- health check: key valid and configured model exists -------------------
+
+use advisor_core::HealthCheck;
+
+#[tokio::test]
+async fn health_check_asks_for_the_configured_model() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models/test-model"))
+        .and(header("x-api-key", "test-key"))
+        .and(header("anthropic-version", "2023-06-01"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "type": "model", "id": "test-model", "display_name": "Test Model"
+        })))
+        .mount(&server)
+        .await;
+
+    let detail = provider_for(&server).check().await.unwrap();
+    assert!(detail.contains("test-model"), "got {detail}");
+}
+
+#[tokio::test]
+async fn health_check_reports_a_missing_model() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models/test-model"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "type": "error", "error": { "type": "not_found_error", "message": "model: test-model" }
+        })))
+        .mount(&server)
+        .await;
+
+    let err = provider_for(&server).check().await.unwrap_err();
+    let err = err.downcast::<LlmError>().expect("an LlmError");
+    assert!(matches!(*err, LlmError::ModelNotFound(ref m) if m == "test-model"));
+}
+
+#[tokio::test]
+async fn health_check_reports_a_bad_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models/test-model"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("invalid x-api-key"))
+        .mount(&server)
+        .await;
+
+    let err = provider_for(&server).check().await.unwrap_err();
+    assert!(matches!(
+        *err.downcast::<LlmError>().unwrap(),
+        LlmError::Auth(_)
+    ));
+}

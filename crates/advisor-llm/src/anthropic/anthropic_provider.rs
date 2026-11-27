@@ -1,15 +1,16 @@
 use url::Url;
 
 use crate::anthropic::anthropic_config::AnthropicConfig;
-use crate::anthropic::wire::Models;
+use crate::anthropic::wire::{MessageRequest, MessageResponse, ModelInfo};
+use crate::http::{model_url, retry_after_ms};
 use crate::types::{ChatRequest, ChatResponse};
-use crate::{
-    anthropic::wire::MessageRequest, anthropic::wire::MessageResponse, llm_error::LlmError,
-    llm_provider::LlmProvider,
-};
+use crate::{llm_error::LlmError, llm_provider::LlmProvider};
 use advisor_core::{HealthCheck, HealthError, Secret};
 use async_trait::async_trait;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
+
+/// Wait used when a 429 carries no `retry-after` header.
+const DEFAULT_RETRY_AFTER_MS: u64 = 1000;
 
 #[derive(Clone, Debug)]
 pub struct AnthropicProvider {
@@ -39,6 +40,13 @@ impl AnthropicProvider {
             client,
         })
     }
+
+    /// The headers every Anthropic request needs.
+    fn authorized(&self, request: RequestBuilder) -> RequestBuilder {
+        request
+            .header("x-api-key", self.api_key.expose())
+            .header("anthropic-version", &self.version)
+    }
 }
 
 #[async_trait::async_trait]
@@ -55,34 +63,14 @@ impl LlmProvider for AnthropicProvider {
         let message_request = MessageRequest::from_chat(req, &self.model);
 
         let resp = self
-            .client
-            .post(self.api_url.clone())
-            .header("x-api-key", self.api_key.expose())
-            .header("anthropic-version", &self.version)
+            .authorized(self.client.post(self.api_url.clone()))
             .json(&message_request)
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
 
-        let status = resp.status();
-
-        if !status.is_success() {
-            let retry_after_ms = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .map(|s| s * 1000)
-                .unwrap_or(1000);
-            let body = resp.text().await.unwrap_or_default();
-            return Err(match status {
-                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => LlmError::Auth(body),
-                StatusCode::TOO_MANY_REQUESTS => LlmError::RateLimited { retry_after_ms },
-                s => LlmError::Api {
-                    status: s.as_u16(),
-                    message: body,
-                },
-            });
+        if !resp.status().is_success() {
+            return Err(error_from_response(resp, &self.model).await);
         }
 
         let parsed: MessageResponse = resp
@@ -93,6 +81,9 @@ impl LlmProvider for AnthropicProvider {
     }
 }
 
+/// Checks that the key is valid **and** that the configured model exists, by
+/// asking for that one model (`GET /v1/models/{model}`). Asking for the model
+/// directly avoids paging through the model list.
 #[async_trait]
 impl HealthCheck for AnthropicProvider {
     fn service_name(&self) -> &'static str {
@@ -101,39 +92,37 @@ impl HealthCheck for AnthropicProvider {
 
     async fn check(&self) -> Result<String, HealthError> {
         let resp = self
-            .client
-            .get(self.models_url.clone())
-            .header("x-api-key", self.api_key.expose())
-            .header("anthropic-version", &self.version)
+            .authorized(self.client.get(model_url(&self.models_url, &self.model)))
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
 
-        let status = resp.status();
-
-        let body = resp.text().await.unwrap_or_default();
-
-        if status.is_success() {
-            let models: Models = serde_json::from_str(&body)?;
-            check_for_model(&models, &self.model)?;
-            return Ok(format!("{} reachable", self.model));
+        if !resp.status().is_success() {
+            return Err(error_from_response(resp, &self.model).await.into());
         }
-
-        let err = match status {
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => LlmError::Auth(body),
-            s => LlmError::Api {
-                status: s.as_u16(),
-                message: body,
-            },
-        };
-        Err(err.into())
+        let model: ModelInfo = resp
+            .json()
+            .await
+            .map_err(|e| LlmError::Parse(e.to_string()))?;
+        Ok(match model.display_name {
+            Some(display_name) => format!("model {} ({display_name}) available", model.id),
+            None => format!("model {} available", model.id),
+        })
     }
 }
 
-fn check_for_model(models: &Models, model_to_be_used: &str) -> Result<(), LlmError> {
-    if models.data.iter().any(|m| m.id == model_to_be_used) {
-        Ok(())
-    } else {
-        Err(LlmError::ModelNotFound(model_to_be_used.to_string()))
+/// Turns a non-success response into the matching `LlmError`.
+async fn error_from_response(resp: Response, model: &str) -> LlmError {
+    let status = resp.status();
+    let retry_after_ms = retry_after_ms(resp.headers(), DEFAULT_RETRY_AFTER_MS);
+    let body = resp.text().await.unwrap_or_default();
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => LlmError::Auth(body),
+        StatusCode::TOO_MANY_REQUESTS => LlmError::RateLimited { retry_after_ms },
+        StatusCode::NOT_FOUND => LlmError::ModelNotFound(model.to_string()),
+        s => LlmError::Api {
+            status: s.as_u16(),
+            message: body,
+        },
     }
 }

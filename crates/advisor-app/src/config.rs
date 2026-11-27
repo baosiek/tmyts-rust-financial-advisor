@@ -208,6 +208,7 @@ pub struct LlmSettings {
     /// Upper bound for one whole LLM call, measured by `TimedProvider`.
     pub call_timeout_secs: u64,
     pub anthropic: Option<AnthropicSettings>,
+    pub openai: Option<OpenaiSettings>,
 }
 
 impl LlmSettings {
@@ -221,6 +222,7 @@ impl LlmSettings {
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     Anthropic,
+    Openai,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -234,6 +236,25 @@ pub struct AnthropicSettings {
 }
 
 impl AnthropicSettings {
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenaiSettings {
+    /// The Responses API endpoint. Any OpenAI-compatible Responses API works here.
+    pub responses_url: Url,
+    /// Model list endpoint; the health check asks for `{models_url}/{model}`.
+    pub models_url: Url,
+    pub model: String,
+    pub timeout_secs: u64,
+    /// Send reasoning items back in the next request (see `[llm.openai]` in the settings file).
+    pub replay_reasoning: bool,
+}
+
+impl OpenaiSettings {
     pub fn timeout(&self) -> Duration {
         Duration::from_secs(self.timeout_secs)
     }
@@ -379,6 +400,21 @@ mod tests {
             settings.llm.anthropic.unwrap().timeout(),
             Duration::from_secs(120)
         );
+    }
+
+    #[test]
+    fn openai_section_parses() {
+        let text = format!(
+            "{VALID}\n[llm.openai]\nresponses_url = \"https://api.openai.com/v1/responses\"\n\
+             models_url = \"https://api.openai.com/v1/models\"\nmodel = \"m\"\n\
+             timeout_secs = 60\nreplay_reasoning = true\n"
+        )
+        .replace(r#"provider = "anthropic""#, r#"provider = "openai""#);
+        let settings = parse(&text).unwrap();
+        assert_eq!(settings.llm.provider, ProviderKind::Openai);
+        let openai = settings.llm.openai.unwrap();
+        assert!(openai.replay_reasoning);
+        assert_eq!(openai.timeout(), Duration::from_secs(60));
     }
 
     #[test]
